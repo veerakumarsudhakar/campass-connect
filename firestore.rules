@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isStaff() { return signedIn() && me().role != 'Student'; }
+
+    match /users/{userId} {
+      allow create: if signedIn() && userId == request.auth.uid
+        && request.resource.data.role == 'Student'
+        && request.resource.data.active == true
+        && request.resource.data.email == request.auth.token.email;
+      allow read: if signedIn() && (userId == request.auth.uid || isStaff());
+      allow update, delete: if false;
+    }
+
+    match /students/{studentId} {
+      allow create: if signedIn() && studentId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.role == 'Student';
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isStaff());
+      allow update: if signedIn() && isStaff() && me().role == 'Year Warden';
+      allow delete: if false;
+    }
+
+    match /registerNumbers/{registerNumber} {
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/registerNumbers/$(registerNumber))
+        && request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
+    match /outpasses/{outpassId} {
+      allow read: if signedIn() && (resource.data.studentId == request.auth.uid || isStaff());
+      allow write: if false;
+      match /{document=**} {
+        allow read: if signedIn()
+          && (get(/databases/$(database)/documents/outpasses/$(outpassId)).data.studentId == request.auth.uid || isStaff());
+        allow write: if false;
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() !== 'Student')",
+        ".write": false
+      }
+    },
+    "outpasses": {
+      "$outpassId": {
+        ".read": "auth != null && (data.child('studentId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() !== 'Student')",
+        ".write": false
+      }
+    },
+    "liveFeed": {
+      ".read": "auth != null",
+      ".write": false
+    }
+  }
+}
