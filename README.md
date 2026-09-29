@@ -1,14 +1,12 @@
 # CampusPass
 
-CampusPass is a Firebase-backed digital hostel outpass system. A single `outpasses` record progresses through Student → Advisor → HOD → Principal → Year Warden → Resident Councillor → Security exit/return. Server-side callable functions own every state change, add approval/gate/audit records, and reject bypass attempts.
+CampusPass is a Firebase Spark-plan-compatible digital hostel outpass system. A single `outpasses` record progresses through Student → Advisor → HOD → Principal → Year Warden → Resident Councillor → Security exit/return. Firestore Security Rules enforce the permitted role and state transitions; Cloudinary handles direct file uploads.
 
 ## Structure
 
 ```
 src/                 React responsive dashboards and workflow UI
-functions/index.js   Firebase Functions: create, approval state machine, gate logs
-firestore.rules      Client read-only rules for outpasses; Functions write changes
-storage.rules        Validated permission-letter uploads
+firestore.rules      Role and workflow rules for direct Firestore operations
 ```
 
 ## Firebase data model
@@ -22,11 +20,10 @@ storage.rules        Validated permission-letter uploads
 
 ## Start locally
 
-1. Enable Email/Password authentication, Firestore, Realtime Database, Storage, and Functions in Firebase.
+1. Enable Email/Password authentication and Firestore in Firebase.
 2. Copy `.env.example` to `.env.local` and set the web-app Firebase values. This workspace is already configured locally for the supplied `campass-connect-d4f45` project; `.env.local` is ignored by Git.
 3. Run `npm install` and then `npm run dev`.
-4. Run `cd functions; npm install; cd ..`.
-5. Deploy with Firebase CLI: `firebase deploy --only firestore:rules,database,storage,functions`.
+4. Deploy with Firebase CLI: `firebase deploy --only firestore:rules`.
 
 ## Realtime Database security
 
@@ -38,7 +35,21 @@ Create Firestore user profiles after creating Auth users. Role strings must exac
 
 Students can use **Create your CampusPass account** from the sign-in screen. It uses Firebase Authentication plus an atomic Firestore batch to create linked `users`, `students`, and protected `registerNumbers` records—no Cloud Functions deployment or paid Firebase plan is required. It only ever grants the `Student` role. Staff roles must be provisioned by an administrator.
 
+## Admin approvals
+
+New student accounts are created with `approvalStatus: 'PENDING'` and cannot access the portal until approved. Create the first administrator in Firebase Authentication and create the matching `users/{uid}` document in the Firebase Console with at least `displayName`, `email`, `role: 'Admin'`, `active: true`, and `approvalStatus: 'APPROVED'`. The **Admin overview** then provides live user approval, role assignment, and campus outpass analysis. Deploy `firestore.rules` after this change:
+
+```powershell
+firebase deploy --only firestore:rules
+```
+
 Without Firebase values, the app opens an interactive visual preview. In connected mode, request creation, decisions, gate logs, audit events, and dashboard data are stored in Firebase.
+
+## Cloudinary student photos
+
+Student photos upload directly to Cloudinary using an **unsigned upload preset**, so Firebase Storage, Cloud Functions, and Cloudinary API secrets are not involved. Set `VITE_CLOUDINARY_CLOUD_NAME` and `VITE_CLOUDINARY_UPLOAD_PRESET` in `.env`.
+
+In Cloudinary: **Settings → Upload → Upload presets → Add upload preset**, set **Signing Mode** to **Unsigned**, and restrict the preset to image formats and the `campuspass/profilePhotos` folder. The upload preset name is safe to use in the frontend. Never place a Cloudinary API secret in `.env`, `.env.example`, source files, or Git.
 
 ## Deploy to Vercel
 

@@ -1,6 +1,6 @@
 export const ROLES = {
   STUDENT: 'Student', ADVISOR: 'Class Advisor', HOD: 'HOD', PRINCIPAL: 'Principal',
-  WARDEN: 'Year Warden', COUNCILLOR: 'Resident Councillor', SECURITY: 'Security'
+  WARDEN: 'Year Warden', COUNCILLOR: 'Resident Councillor', SECURITY: 'Security', ADMIN: 'Admin'
 };
 
 export const QUEUE_FOR_ROLE = {

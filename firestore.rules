@@ -5,20 +5,27 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function isStaff() { return signedIn() && me().role != 'Student'; }
+    function isAdmin() { return signedIn() && me().role == 'Admin'; }
 
     match /users/{userId} {
-      allow create: if signedIn() && userId == request.auth.uid
+      allow create: if (signedIn() && userId == request.auth.uid
         && request.resource.data.role == 'Student'
-        && request.resource.data.active == true
-        && request.resource.data.email == request.auth.token.email;
+        && request.resource.data.active == false
+        && request.resource.data.approvalStatus == 'PENDING'
+        && request.resource.data.email == request.auth.token.email)
+        || (isAdmin() && request.resource.data.active == true
+        && request.resource.data.approvalStatus == 'APPROVED');
       allow read: if signedIn() && (userId == request.auth.uid || isStaff());
-      allow update, delete: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','approvalStatus','role','reviewedAt']);
+      allow delete: if false;
     }
 
     match /students/{studentId} {
       allow create: if signedIn() && studentId == request.auth.uid
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.role == 'Student';
+        && request.resource.data.role == 'Student'
+        && request.resource.data.active == false;
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || isStaff());
       allow update: if signedIn() && isStaff() && me().role == 'Year Warden';
       allow delete: if false;
@@ -33,12 +40,36 @@ service cloud.firestore {
 
     match /outpasses/{outpassId} {
       allow read: if signedIn() && (resource.data.studentId == request.auth.uid || isStaff());
-      allow write: if false;
+      allow create: if signedIn() && me().role == 'Student' && me().active == true
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.status == 'PENDING_ADVISOR';
+      allow update: if signedIn() && validOutpassTransition();
+      allow delete: if false;
       match /{document=**} {
         allow read: if signedIn()
           && (get(/databases/$(database)/documents/outpasses/$(outpassId)).data.studentId == request.auth.uid || isStaff());
         allow write: if false;
       }
+    }
+
+    function validOutpassTransition() {
+      let old = resource.data.status;
+      let next = request.resource.data.status;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return changed.hasOnly(['status','approvals','updatedAt','passNumber'])
+        && ((me().role == 'Class Advisor' && old == 'PENDING_ADVISOR' && (next == 'PENDING_HOD' || next == 'REJECTED'))
+        || (me().role == 'HOD' && old == 'PENDING_HOD' && (next == 'PENDING_PRINCIPAL' || next == 'REJECTED'))
+        || (me().role == 'Principal' && old == 'PENDING_PRINCIPAL' && (next == 'PENDING_WARDEN' || next == 'REJECTED'))
+        || (me().role == 'Year Warden' && old == 'PENDING_WARDEN' && (next == 'PENDING_COUNCILLOR' || next == 'REJECTED'))
+        || (me().role == 'Resident Councillor' && old == 'PENDING_COUNCILLOR' && (next == 'APPROVED' || next == 'REJECTED'))
+        || (me().role == 'Security' && old == 'APPROVED' && next == 'CURRENTLY_OUT')
+        || (me().role == 'Security' && old == 'CURRENTLY_OUT' && next == 'CLEARED'));
+    }
+
+    match /studentDirectory/{studentId} {
+      allow read: if signedIn() && isStaff();
+      allow create, update: if signedIn() && (me().role == 'Class Advisor' || me().role == 'Year Warden');
+      allow delete: if false;
     }
   }
 }
