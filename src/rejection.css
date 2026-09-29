@@ -1,0 +1,18 @@
+.drawer .timeline .rejected {
+  color: var(--red);
+}
+
+.timeline .rejected i {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+.timeline .rejected small,
+.decline-note {
+  color: var(--red);
+}
+
+.pass-card .timeline .rejected small b {
+  color: #ff9ca5;
+}
