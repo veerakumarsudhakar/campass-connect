@@ -4,6 +4,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { accountManager, AccountError } from './account-management.js';
+import { error as logError } from 'firebase-functions/logger';
 setGlobalOptions({region:'europe-west1'});
 initializeApp(); const db=getFirestore(); const adminAuth=getAuth();
 const roles={ADVISOR:'Class Advisor',HOD:'HOD',PRINCIPAL:'Principal',WARDEN:'Year Warden',COUNCILLOR:'Resident Councillor',SECURITY:'Security'};
@@ -12,7 +13,11 @@ async function actor(auth){if(!auth)throw new HttpsError('unauthenticated','Sign
 const manageAccount = accountManager({db,auth:adminAuth,timestamp:()=>FieldValue.serverTimestamp()});
 export const manageUserAccount = onCall(async req => {
   try { return await manageAccount({callerUid:req.auth?.uid,uid:req.data?.uid,action:req.data?.action}); }
-  catch(error) { if(error instanceof AccountError)throw new HttpsError(error.code,error.message);throw new HttpsError('internal','Account update failed. Please retry.'); }
+  catch(error) {
+    logError('Account management failed', {action:req.data?.action||'unknown',code:error.code||'unknown',message:error.message});
+    if(error instanceof AccountError)throw new HttpsError(error.code,error.message);
+    throw new HttpsError('internal','Account update failed on the server. Please contact the system administrator.');
+  }
 });
 function audit(ref,user,action,from,to,remarks=''){return ref.collection('auditLogs').add({userId:user.id,userName:user.displayName||'',role:user.role,action,previousStatus:from,newStatus:to,remarks,createdAt:FieldValue.serverTimestamp()})}
 const clean=(value,max=120)=>String(value||'').trim().slice(0,max);
