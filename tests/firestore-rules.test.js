@@ -22,4 +22,10 @@ result=await write('outpasses/routing',{...principalPass,status:'PENDING_WARDEN'
 result=await write('outpasses/routing',{...principalPass,status:'PENDING_WARDEN',hostel:'Girls hostel',approvals:[entry,principalEntry]},'principal');assert.equal(result.status,200,result.body);
 result=await write('users/student',{...approved,role:'Student',displayName:'Student',department:'CSE',year:2,gender:'Female',section:'A',active:false,deleted:true,approvalStatus:'REMOVED'},'admin');assert.equal(result.status,200,result.body);
 result=await write('users/admin',{role:'Admin',displayName:'Admin',active:false,approvalStatus:'REMOVED',deleted:true},'admin');assert.equal(result.status,403,result.body);
-console.log('Firestore checks passed: approvals, inactive access, department scope, archive, hostel routing, user removal, admin protection.');
+const disabledStudent={...approved,role:'Student',displayName:'Student',department:'CSE',year:2,gender:'Female',section:'A',active:false,disabled:true};
+await write('users/student',disabledStudent);
+result=await write('users/student',{...disabledStudent,active:true},'admin');assert.equal(result.status,403,result.body);
+let blockedRead=await fetch(`${root}/outpasses/one`,{headers:{Authorization:`Bearer ${token('student')}`}});assert.equal(blockedRead.status,403);
+await write('accountLocks/student',{deleted:true});
+result=await write('users/student',{...disabledStudent,active:false,approvalStatus:'PENDING'},'student');assert.equal(result.status,403,result.body);
+console.log('Firestore checks passed: workflow, scope, archive, disabled access, deleted-account protection and admin protection.');

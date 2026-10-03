@@ -2,9 +2,10 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
+    function signedIn() { return request.auth != null && !exists(/databases/$(database)/documents/accountLocks/$(request.auth.uid)); }
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function isStaff() { return signedIn() && me().active == true && me().role != 'Student'; }
+    function hasAccess() { return signedIn() && me().active == true && me().get('disabled', false) == false && me().get('deletionPending', false) == false; }
+    function isStaff() { return hasAccess() && me().role != 'Student'; }
     function isAdmin() { return isStaff() && me().role == 'Admin'; }
     function inScope() {
       return me().role == 'Principal' || me().role == 'Security'
@@ -33,6 +34,8 @@ service cloud.firestore {
         && request.resource.data.approvalStatus == 'APPROVED');
       allow read: if signedIn() && (userId == request.auth.uid || isStaff());
       allow update: if isAdmin()
+        && resource.data.get('disabled', false) == false && resource.data.get('deletionPending', false) == false
+        && resource.data.get('accountOperation', null) == null
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','approvalStatus','role','reviewedAt','deleted'])
         && (resource.data.role != 'Admin' || (request.resource.data.role == 'Admin'
           && request.resource.data.active == true && request.resource.data.get('deleted', false) == false))
@@ -58,8 +61,8 @@ service cloud.firestore {
     }
 
     match /outpasses/{outpassId} {
-      allow read: if signedIn() && (resource.data.studentId == request.auth.uid || isStaff());
-      allow create: if signedIn() && me().role == 'Student' && me().active == true
+      allow read: if hasAccess() && (resource.data.studentId == request.auth.uid || isStaff());
+      allow create: if hasAccess() && me().role == 'Student'
         && request.resource.data.studentId == request.auth.uid
         && request.resource.data.status == 'PENDING_ADVISOR'
         && request.resource.data.approvals == []
@@ -74,7 +77,7 @@ service cloud.firestore {
           && request.resource.data.archived == true && request.resource.data.archivedBy == request.auth.uid));
       allow delete: if false;
       match /{document=**} {
-        allow read: if signedIn()
+        allow read: if hasAccess()
           && (get(/databases/$(database)/documents/outpasses/$(outpassId)).data.studentId == request.auth.uid || isStaff());
         allow write: if false;
       }

@@ -6,7 +6,11 @@ Dashboard counts open matching request or account views. Administrators can filt
 
 Students have separate in-progress, approved, and rejected views and supply their own mobile number. Staff can filter requests by department and year, with section filters for Advisors and HODs. Registration and admin account creation show section fields only for Students and Class Advisors. Approval trails display the signed-in approver's name and UID. Principal approval assigns male students to Boys hostel and female students to Girls hostel; other values require hostel assignment. Wardens and Resident Councillors can request hostel coverage when registering. Existing staff profiles need their coverage fields populated by the campus administrator.
 
-**Remove user** archives a non-admin profile and revokes its portal access, preserving its Auth identity and outpass history. **Archive duplicate** appears for staff reviewing a pending request when another active request exists for that student. It hides the duplicate while retaining the record. These actions ask for confirmation in the portal. Admin accounts are protected from removal.
+**Delete account** permanently deletes the Firebase Authentication account, user profile, linked student profile, and register-number reservation after confirmation. Outpass history remains. **Disable account** blocks Firebase sign-in, revokes refresh tokens, and removes portal access. **Enable account** restores sign-in; pending or rejected accounts still require approval. These controls apply to all roles, including other administrators. Another administrator must manage your own account. Incomplete deletion stays blocked and offers a retry.
+
+Account management uses the admin-only `manageUserAccount` callable function. Install backend dependencies with `npm --prefix functions install`, then deploy with `firebase deploy --only functions,firestore:rules --project YOUR_PROJECT_ID`. Deploying all functions also updates existing callable workflows to reject disabled accounts. Deploying Cloud Functions requires the [Firebase Blaze plan](https://firebase.google.com/docs/functions/get-started). The frontend alone cannot delete or disable another user's Auth account. Live accounts are not modified during local tests.
+
+**Archive duplicate** hides duplicate pending requests while retaining their history.
 
 **Forgot password?** sends a Firebase password-reset email using the email entered on the login screen.
 

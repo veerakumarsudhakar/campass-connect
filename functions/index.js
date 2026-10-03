@@ -3,11 +3,17 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { accountManager, AccountError } from './account-management.js';
 setGlobalOptions({region:'europe-west1'});
 initializeApp(); const db=getFirestore(); const adminAuth=getAuth();
 const roles={ADVISOR:'Class Advisor',HOD:'HOD',PRINCIPAL:'Principal',WARDEN:'Year Warden',COUNCILLOR:'Resident Councillor',SECURITY:'Security'};
 const transitions={PENDING_ADVISOR:{role:roles.ADVISOR,next:'PENDING_HOD'},PENDING_HOD:{role:roles.HOD,next:'PENDING_PRINCIPAL'},PENDING_PRINCIPAL:{role:roles.PRINCIPAL,next:'PENDING_WARDEN'},PENDING_WARDEN:{role:roles.WARDEN,next:'PENDING_COUNCILLOR'},PENDING_COUNCILLOR:{role:roles.COUNCILLOR,next:'APPROVED'}};
-async function actor(auth){if(!auth)throw new HttpsError('unauthenticated','Sign in required.');const s=await db.doc(`users/${auth.uid}`).get();if(!s.exists)throw new HttpsError('permission-denied','User profile missing.');return {id:auth.uid,...s.data()}}
+async function actor(auth){if(!auth)throw new HttpsError('unauthenticated','Sign in required.');const s=await db.doc(`users/${auth.uid}`).get();if(!s.exists||s.data().active!==true||s.data().disabled||s.data().deletionPending)throw new HttpsError('permission-denied','Account access is unavailable.');return {id:auth.uid,...s.data()}}
+const manageAccount = accountManager({db,auth:adminAuth,timestamp:()=>FieldValue.serverTimestamp()});
+export const manageUserAccount = onCall(async req => {
+  try { return await manageAccount({callerUid:req.auth?.uid,uid:req.data?.uid,action:req.data?.action}); }
+  catch(error) { if(error instanceof AccountError)throw new HttpsError(error.code,error.message);throw new HttpsError('internal','Account update failed. Please retry.'); }
+});
 function audit(ref,user,action,from,to,remarks=''){return ref.collection('auditLogs').add({userId:user.id,userName:user.displayName||'',role:user.role,action,previousStatus:from,newStatus:to,remarks,createdAt:FieldValue.serverTimestamp()})}
 const clean=(value,max=120)=>String(value||'').trim().slice(0,max);
 const mail=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
