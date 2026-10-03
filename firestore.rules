@@ -4,8 +4,24 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function isStaff() { return signedIn() && me().role != 'Student'; }
-    function isAdmin() { return signedIn() && me().role == 'Admin'; }
+    function isStaff() { return signedIn() && me().active == true && me().role != 'Student'; }
+    function isAdmin() { return isStaff() && me().role == 'Admin'; }
+    function inScope() {
+      return me().role == 'Principal' || me().role == 'Security'
+        || ((me().get('institution', '') == '' || me().institution == resource.data.get('institution', ''))
+        && (me().get('department', '') == '' || me().department == resource.data.department)
+        && (me().get('year', 0) == 0 || me().get('year', null) == null || me().year == resource.data.year)
+        && (me().role != 'Class Advisor' || me().get('section', '') == '' || me().section == resource.data.get('section', ''))
+        && (me().get('hostel', '') == '' || me().hostel == resource.data.get('hostel',
+          resource.data.get('gender', '') == 'Male' ? 'Boys hostel' : resource.data.get('gender', '') == 'Female' ? 'Girls hostel' : 'Hostel assignment required')));
+    }
+    function ownsQueue() {
+      return (me().role == 'Class Advisor' && resource.data.status == 'PENDING_ADVISOR')
+        || (me().role == 'HOD' && resource.data.status == 'PENDING_HOD')
+        || (me().role == 'Principal' && resource.data.status == 'PENDING_PRINCIPAL')
+        || (me().role == 'Year Warden' && resource.data.status == 'PENDING_WARDEN')
+        || (me().role == 'Resident Councillor' && resource.data.status == 'PENDING_COUNCILLOR');
+    }
 
     match /users/{userId} {
       allow create: if (signedIn() && userId == request.auth.uid
@@ -17,7 +33,10 @@ service cloud.firestore {
         && request.resource.data.approvalStatus == 'APPROVED');
       allow read: if signedIn() && (userId == request.auth.uid || isStaff());
       allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','approvalStatus','role','reviewedAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','approvalStatus','role','reviewedAt','deleted'])
+        && (resource.data.role != 'Admin' || (request.resource.data.role == 'Admin'
+          && request.resource.data.active == true && request.resource.data.get('deleted', false) == false))
+        && (userId != request.auth.uid || request.resource.data.active == true);
       allow delete: if false;
     }
 
@@ -42,8 +61,17 @@ service cloud.firestore {
       allow read: if signedIn() && (resource.data.studentId == request.auth.uid || isStaff());
       allow create: if signedIn() && me().role == 'Student' && me().active == true
         && request.resource.data.studentId == request.auth.uid
-        && request.resource.data.status == 'PENDING_ADVISOR';
-      allow update: if signedIn() && validOutpassTransition();
+        && request.resource.data.status == 'PENDING_ADVISOR'
+        && request.resource.data.approvals == []
+        && request.resource.data.department == me().department
+        && request.resource.data.year == me().year
+        && request.resource.data.get('gender', '') == me().get('gender', '')
+        && request.resource.data.get('section', '') == me().get('section', '')
+        && request.resource.data.get('archived', false) == false;
+      allow update: if isStaff() && inScope() && resource.data.get('archived', false) == false
+        && (validOutpassTransition() || (ownsQueue()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived','archivedBy','updatedAt'])
+          && request.resource.data.archived == true && request.resource.data.archivedBy == request.auth.uid));
       allow delete: if false;
       match /{document=**} {
         allow read: if signedIn()
@@ -56,7 +84,11 @@ service cloud.firestore {
       let old = resource.data.status;
       let next = request.resource.data.status;
       let changed = request.resource.data.diff(resource.data).affectedKeys();
-      return changed.hasOnly(['status','approvals','updatedAt','passNumber'])
+      return changed.hasOnly(['status','approvals','updatedAt','passNumber','hostel'])
+        && (!changed.hasAny(['hostel']) || (me().role == 'Principal' && next == 'PENDING_WARDEN'
+          && request.resource.data.hostel == (resource.data.get('gender', '') == 'Male' ? 'Boys hostel'
+            : resource.data.get('gender', '') == 'Female' ? 'Girls hostel' : 'Hostel assignment required')))
+        && (me().role == 'Security' ? request.resource.data.approvals == resource.data.approvals : validApproval(next))
         && ((me().role == 'Class Advisor' && old == 'PENDING_ADVISOR' && (next == 'PENDING_HOD' || next == 'REJECTED'))
         || (me().role == 'HOD' && old == 'PENDING_HOD' && (next == 'PENDING_PRINCIPAL' || next == 'REJECTED'))
         || (me().role == 'Principal' && old == 'PENDING_PRINCIPAL' && (next == 'PENDING_WARDEN' || next == 'REJECTED'))
@@ -66,9 +98,21 @@ service cloud.firestore {
         || (me().role == 'Security' && old == 'CURRENTLY_OUT' && next == 'CLEARED'));
     }
 
+    function validApproval(next) {
+      let entries = request.resource.data.approvals;
+      let count = resource.data.approvals.size();
+      let entry = entries[count];
+      return entries.size() == count + 1
+        && entries.removeAll([entry]) == resource.data.approvals
+        && entry.role == me().role && entry.approverId == request.auth.uid
+        && entry.name == me().displayName
+        && entry.decision == (next == 'REJECTED' ? 'REJECTED' : 'APPROVED')
+        && (next != 'REJECTED' || entry.remarks.size() > 0);
+    }
+
     match /studentDirectory/{studentId} {
       allow read: if signedIn() && isStaff();
-      allow create, update: if signedIn() && (me().role == 'Class Advisor' || me().role == 'Year Warden');
+      allow create, update: if isStaff() && (me().role == 'Class Advisor' || me().role == 'Year Warden');
       allow delete: if false;
     }
   }

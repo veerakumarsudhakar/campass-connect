@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+const project='demo-campuspass';
+const root=`http://${process.env.FIRESTORE_EMULATOR_HOST||'127.0.0.1:8080'}/v1/projects/${project}/databases/(default)/documents`;
+const field=value=>value===null?{nullValue:null}:Array.isArray(value)?{arrayValue:{values:value.map(field)}}:typeof value==='object'?{mapValue:{fields:fields(value)}}:typeof value==='boolean'?{booleanValue:value}:typeof value==='number'?{integerValue:String(value)}:{stringValue:value};
+const fields=value=>Object.fromEntries(Object.entries(value).map(([k,v])=>[k,field(v)]));
+const token=uid=>[Buffer.from(JSON.stringify({alg:'none',typ:'JWT'})).toString('base64url'),Buffer.from(JSON.stringify({iss:`https://securetoken.google.com/${project}`,aud:project,sub:uid,user_id:uid,iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+3600,firebase:{sign_in_provider:'password'},email:`${uid}@example.test`})).toString('base64url'),''].join('.');
+async function write(path,data,actor='owner'){const response=await fetch(`${root}/${path}`,{method:'PATCH',headers:{Authorization:`Bearer ${actor==='owner'?'owner':token(actor)}`,'Content-Type':'application/json'},body:JSON.stringify({fields:fields(data)})});return {status:response.status,body:await response.text()};}
+const approved={active:true,approvalStatus:'APPROVED'};
+for(const [uid,profile] of Object.entries({admin:{...approved,role:'Admin',displayName:'Admin'},advisor:{...approved,role:'Class Advisor',displayName:'Dr Advisor',department:'CSE'},inactive:{active:false,role:'HOD',displayName:'Inactive'},warden:{...approved,role:'Year Warden',displayName:'Warden',hostel:'Girls hostel'},principal:{...approved,role:'Principal',displayName:'Principal'},student:{...approved,role:'Student',displayName:'Student',department:'CSE',year:2,gender:'Female',section:'A'}}))assert.equal((await write(`users/${uid}`,profile)).status,200);
+const pass={studentId:'student',studentName:'Student',registerNumber:'REG1',department:'CSE',year:2,gender:'Female',section:'A',status:'PENDING_ADVISOR',approvals:[]};
+assert.equal((await write('outpasses/one',pass)).status,200);
+const entry={role:'Class Advisor',approverId:'advisor',name:'Dr Advisor',decision:'APPROVED',remarks:'',at:'2026-10-03'};
+let result=await write('outpasses/one',{...pass,status:'PENDING_HOD',approvals:[entry]},'advisor');assert.equal(result.status,200,result.body);
+result=await write('outpasses/one',{...pass,status:'PENDING_PRINCIPAL',approvals:[entry]},'inactive');assert.equal(result.status,403,result.body);
+await write('outpasses/wrong-dept',{...pass,department:'EEE'});
+result=await write('outpasses/wrong-dept',{...pass,department:'EEE',archived:true,archivedBy:'advisor'},'advisor');assert.equal(result.status,403,result.body);
+await write('outpasses/duplicate',pass);
+result=await write('outpasses/duplicate',{...pass,archived:true,archivedBy:'advisor'},'advisor');assert.equal(result.status,200,result.body);
+const principalPass={...pass,status:'PENDING_PRINCIPAL',approvals:[entry]};await write('outpasses/routing',principalPass);
+const principalEntry={role:'Principal',approverId:'principal',name:'Principal',decision:'APPROVED',remarks:'',at:'2026-10-03'};
+result=await write('outpasses/routing',{...principalPass,status:'PENDING_WARDEN',hostel:'Boys hostel',approvals:[entry,principalEntry]},'principal');assert.equal(result.status,403,result.body);
+result=await write('outpasses/routing',{...principalPass,status:'PENDING_WARDEN',hostel:'Girls hostel',approvals:[entry,principalEntry]},'principal');assert.equal(result.status,200,result.body);
+result=await write('users/student',{...approved,role:'Student',displayName:'Student',department:'CSE',year:2,gender:'Female',section:'A',active:false,deleted:true,approvalStatus:'REMOVED'},'admin');assert.equal(result.status,200,result.body);
+result=await write('users/admin',{role:'Admin',displayName:'Admin',active:false,approvalStatus:'REMOVED',deleted:true},'admin');assert.equal(result.status,403,result.body);
+console.log('Firestore checks passed: approvals, inactive access, department scope, archive, hostel routing, user removal, admin protection.');

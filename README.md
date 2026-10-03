@@ -1,5 +1,17 @@
 # CampusPass
 
+## Portal updates
+
+Dashboard counts open matching request or account views. Administrators can filter users by access status, requested role, and department, and see approved counts for each role. All administrators subscribe to the same Firestore users collection; account changes also update the affected user's open session.
+
+Students have separate in-progress, approved, and rejected views and supply their own mobile number. Staff can filter requests by department and year, with section filters for Advisors and HODs. Registration and admin account creation show section fields only for Students and Class Advisors. Approval trails display the signed-in approver's name and UID. Principal approval assigns male students to Boys hostel and female students to Girls hostel; other values require hostel assignment. Wardens and Resident Councillors can request hostel coverage when registering. Existing staff profiles need their coverage fields populated by the campus administrator.
+
+**Remove user** archives a non-admin profile and revokes its portal access, preserving its Auth identity and outpass history. **Archive duplicate** appears for staff reviewing a pending request when another active request exists for that student. It hides the duplicate while retaining the record. These actions ask for confirmation in the portal. Admin accounts are protected from removal.
+
+**Forgot password?** sends a Firebase password-reset email using the email entered on the login screen.
+
+Run `npm test` for request filtering and hostel scope checks. Run `npm run test:rules` with Firebase CLI and Java 21 installed for isolated Firestore emulator checks. The test project is `demo-campuspass`, which does not use the live Firebase database. Deploy updated `firestore.rules` before using the new archive and hostel-routing actions against your connected Firebase project.
+
 CampusPass is a Firebase Spark-plan-compatible digital hostel outpass system. A single `outpasses` record progresses through Student → Advisor → HOD → Principal → Year Warden → Resident Councillor → Security exit/return. Firestore Security Rules enforce the permitted role and state transitions; Cloudinary handles direct file uploads.
 
 ## Structure
