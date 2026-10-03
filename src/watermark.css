@@ -1,0 +1,34 @@
+.developer-watermark {
+  position: fixed;
+  right: 14px;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 100;
+  max-width: calc(100vw - 28px);
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 85%);
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.15px;
+  text-align: right;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (max-width: 780px) {
+  .developer-watermark {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    font-size: 10px;
+  }
+}
+
+@media print {
+  .developer-watermark {
+    right: 0;
+    bottom: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 9px;
+  }
+}
