@@ -40,7 +40,11 @@ test('portal markup presents the document-requested fields and separate admin ov
     const createUser=render(admin.UserEditor,{currentUser:{uid:'admin'},demo:true,notify:()=>{}});
     assert.match(createUser,/Create a new user/);assert.match(createUser,/Temporary password/);assert.match(createUser,/Student type/);
     const editUser=render(admin.UserEditor,{person:{uid:'student',email:'student@example.test',role:'Student',approvalStatus:'APPROVED'},currentUser:{uid:'admin'},demo:true,notify:()=>{},close:()=>{}});
-    assert.match(editUser,/Save account changes/);assert.match(editUser,/Archived/);assert.match(editUser,/Send password reset/);assert.doesNotMatch(editUser,/Temporary password/);
+    assert.match(editUser,/Save account changes/);assert.match(editUser,/Archived/);assert.match(editUser,/Send password reset/);assert.match(editUser,/Permanently delete/);assert.doesNotMatch(editUser,/Temporary password/);
+    const ownAccount=render(admin.UserEditor,{person:{uid:'admin',email:'admin@example.test',role:'Admin',approvalStatus:'APPROVED',displayName:'Ada Admin'},currentUser:{uid:'admin'},demo:true,notify:()=>{},close:()=>{}});
+    assert.doesNotMatch(ownAccount,/Permanently delete/);
+    const usersPage=render(admin.AdminUsers,{users:[{uid:'student',displayName:'Arun',email:'student@example.test',registerNumber:'REG1',role:'Student',approvalStatus:'APPROVED'}],currentUser:{uid:'admin'},demo:true,notify:()=>{},setUsers:()=>{}});
+    assert.match(usersPage,/Permanently delete/);
     const sh=render(app.ProfileFields,{form:{...form,institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:'SCIENCE AND HUMANITIES (S&H)'},set:()=>{},role:'Class Advisor'});
     assert.match(sh,/All sections/);assert.match(sh,/Common first-year Engineering/);assert.doesNotMatch(sh,/>Year coverage</);
     const requestTable=render(app.RequestTable,{records:[],role:'HOD',user:{},notify:()=>{}});

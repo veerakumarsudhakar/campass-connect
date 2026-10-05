@@ -4,7 +4,7 @@ import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { ROLES } from './workflow';
 import { ProfileFields } from './ProfileFields';
-import { createAdminAccount, saveAdminProfile, adminProfile } from './admin-service';
+import { createAdminAccount, permanentlyDeleteAccount, saveAdminProfile, adminProfile } from './admin-service';
 import { useAcademicCatalog, validateCatalog } from './academic-catalog';
 import { SCIENCE_AND_HUMANITIES, formatSections, isCommonFirstYear, isEngineering, isScienceAndHumanities, normalizeCatalog, sectionSpan } from '../functions/academic-policy';
 import './admin-workspace.css';
@@ -23,7 +23,7 @@ async function saveCatalog(catalog, demo) {
 export function UserEditor({ person, currentUser, demo, setUsers, notify, close }) {
   const editing = Boolean(person);
   const [form,setForm] = useState({ ...blank, ...person, role: person?.approvalStatus === 'PENDING' ? person.requestedRole || person.role : person?.role || 'Student', password:'' });
-  const [busy,setBusy] = useState(false), [error,setError] = useState(''), [shown,setShown] = useState(false);
+  const [busy,setBusy] = useState(false), [error,setError] = useState(''), [shown,setShown] = useState(false), [confirmDelete,setConfirmDelete] = useState(false);
   const set = (key,value) => setForm(old => ({ ...old, [key]:value }));
   const self = person?.uid === currentUser.uid;
   async function save(event) {
@@ -39,6 +39,15 @@ export function UserEditor({ person, currentUser, demo, setUsers, notify, close 
     } catch (err) { setError(message(err)); } finally { setBusy(false); }
   }
   async function reset() { setBusy(true); setError(''); try { if (!demo) await sendPasswordResetEmail(auth,person.email); notify('Password reset email requested.'); } catch(err) { setError(message(err)); } finally { setBusy(false); } }
+  async function remove() {
+    setBusy(true); setError('');
+    try {
+      if (demo) setUsers?.(rows => rows.filter(row => row.uid !== person.uid));
+      else await permanentlyDeleteAccount(person);
+      notify('Account, portal access, and user records were permanently deleted.');
+      close();
+    } catch (err) { setError(message(err)); setConfirmDelete(false); } finally { setBusy(false); }
+  }
   return <section className="form-card admin-editor"><div className="panel-head"><div><h3>{editing?'Edit user account':'Create a new user'}</h3><p>{editing?'Update identity, role, assignments, contact details, and portal access.':'Choose a role, assign campus coverage, and create approved access.'}</p></div>{editing&&<button type="button" className="text-btn" onClick={close}>Close</button>}</div><form className="access-grid" onSubmit={save}>
     <label>Full name<input value={form.displayName} onChange={e=>set('displayName',e.target.value)} maxLength={160} required/></label>
     <label>Role<select value={form.role} disabled={self} onChange={e=>set('role',e.target.value)}>{Object.values(ROLES).map(role=><option key={role}>{role}</option>)}</select>{self&&<small>Another administrator must change your role or access.</small>}</label>
@@ -47,16 +56,26 @@ export function UserEditor({ person, currentUser, demo, setUsers, notify, close 
     <label>Register number / staff ID<input value={form.registerNumber} onChange={e=>set('registerNumber',e.target.value)} maxLength={40} required/></label>
     <ProfileFields form={form} set={set} role={form.role}/>
     <label>Profile photo URL<input type="url" value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https://…"/></label>
-    {editing&&<><label>Approval<select value={form.approvalStatus} disabled={self} onChange={e=>set('approvalStatus',e.target.value)}><option value="APPROVED">Approved</option><option value="PENDING">Pending review</option><option value="REJECTED">Rejected</option><option value="REMOVED">Archived</option></select></label><label>Portal access<select value={form.disabled?'disabled':'enabled'} disabled={self} onChange={e=>set('disabled',e.target.value==='disabled')}><option value="enabled">Enabled when approved</option><option value="disabled">Disabled</option></select></label><p className="admin-help">Archiving or disabling blocks portal access and preserves past passes. Reapprove and enable to restore access.</p></>}
-    {error&&<p className="error admin-wide" role="alert">{error}</p>}<div className="admin-form-actions admin-wide"><button className="primary" disabled={busy}>{busy?'Saving…':editing?'Save account changes':'Create approved user'}</button>{editing&&<button type="button" className="secondary" disabled={busy||!person.email} onClick={reset}>Send password reset</button>}</div>
+    {editing&&<><label>Approval<select value={form.approvalStatus} disabled={self} onChange={e=>set('approvalStatus',e.target.value)}><option value="APPROVED">Approved</option><option value="PENDING">Pending review</option><option value="REJECTED">Rejected</option><option value="REMOVED">Archived</option></select></label><label>Portal access<select value={form.disabled?'disabled':'enabled'} disabled={self} onChange={e=>set('disabled',e.target.value==='disabled')}><option value="enabled">Enabled when approved</option><option value="disabled">Disabled</option></select></label><p className="admin-help">Archiving or disabling blocks portal access and keeps the account and past passes. Reapprove and enable to restore access.</p></>}
+    {error&&<p className="error admin-wide" role="alert">{error}</p>}<div className="admin-form-actions admin-wide"><button className="primary" disabled={busy}>{busy?'Saving…':editing?'Save account changes':'Create approved user'}</button>{editing&&<button type="button" className="secondary" disabled={busy||!person.email} onClick={reset}>Send password reset</button>}{editing&&!self&&(confirmDelete?<div className="delete-account"><p>Permanently delete {person.displayName || 'this account'}? This removes the profile, portal access, register number, and this person&apos;s outpass records. It cannot be undone.</p><button type="button" className="secondary danger" disabled={busy} onClick={remove}>{busy?'Deleting…':'Confirm permanent delete'}</button><button type="button" className="text-btn" disabled={busy} onClick={()=>setConfirmDelete(false)}>Cancel</button></div>:<button type="button" className="secondary danger" disabled={busy} onClick={()=>setConfirmDelete(true)}>Permanently delete</button>)}</div>
   </form></section>;
 }
 
 export function AdminUsers({users,currentUser,demo,setUsers,notify,rolesOnly=false}) {
-  const [term,setTerm] = useState(''), [role,setRole] = useState(''), [access,setAccess] = useState(''), [department,setDepartment] = useState(''), [selected,setSelected] = useState(null);
+  const [term,setTerm] = useState(''), [role,setRole] = useState(''), [access,setAccess] = useState(''), [department,setDepartment] = useState(''), [selected,setSelected] = useState(null), [deleting,setDeleting] = useState(null), [busy,setBusy] = useState(false);
+  async function remove(person) {
+    setBusy(true);
+    try {
+      if (demo) setUsers?.(rows => rows.filter(row => row.uid !== person.uid));
+      else await permanentlyDeleteAccount(person);
+      if (selected?.uid === person.uid) setSelected(null);
+      setDeleting(null);
+      notify(`${person.displayName || 'This account'} was permanently deleted.`);
+    } catch (err) { notify(message(err)); } finally { setBusy(false); }
+  }
   const departments = [...new Set(users.map(user=>user.department).filter(Boolean))].sort();
   const rows = users.filter(user => (!rolesOnly||user.role!=='Student'||user.requestedRole&&user.requestedRole!=='Student') && (!role||(user.requestedRole||user.role)===role) && (!department||user.department===department) && (!access||(access==='DISABLED'?user.disabled:user.approvalStatus===access)) && [user.displayName,user.email,user.registerNumber].join(' ').toLowerCase().includes(term.toLowerCase()));
-  return <section>{selected&&<UserEditor key={selected.uid} person={selected} currentUser={currentUser} demo={demo} setUsers={setUsers} notify={notify} close={()=>setSelected(null)}/>}<section className="panel"><div className="panel-head"><div><h3>{rolesOnly?'Staff roles & coverage':'User accounts & approvals'}</h3><p>{rows.length} accounts · Select an account to edit all profile fields.</p></div></div><div className="filter-bar"><label>Search<input placeholder="Name, email or ID" value={term} onChange={e=>setTerm(e.target.value)}/></label><label>Role<select value={role} onChange={e=>setRole(e.target.value)}><option value="">All roles</option>{Object.values(ROLES).map(value=><option key={value}>{value}</option>)}</select></label><label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">All departments</option>{departments.map(value=><option key={value}>{value}</option>)}</select></label><label>Access<select value={access} onChange={e=>setAccess(e.target.value)}><option value="">All access states</option>{['PENDING','APPROVED','REJECTED','REMOVED','DISABLED'].map(value=><option key={value}>{value}</option>)}</select></label></div><div className="table-wrap"><table className="admin-table"><thead><tr><th>User</th><th>Role & coverage</th><th>Access</th><th>Action</th></tr></thead><tbody>{rows.map(user=><tr key={user.uid}><td><b>{user.displayName}</b><span>{user.email}</span><span>{user.registerNumber}</span></td><td>{user.requestedRole||user.role}<span>{user.institution}</span><span>{user.department}{user.year?' · Year '+user.year:''}{user.sections?.length?' · '+formatSections(user.sections):user.section?' · '+user.section:''}{user.hostel?' · '+user.hostel:''}</span></td><td><span className="status">{user.disabled?'DISABLED':user.approvalStatus||'PENDING'}</span></td><td><button className="secondary" onClick={()=>setSelected(user)}>Edit / review</button></td></tr>)}</tbody></table>{!rows.length&&<p className="empty">No accounts match these filters.</p>}</div></section></section>;
+  return <section>{selected&&<UserEditor key={selected.uid} person={selected} currentUser={currentUser} demo={demo} setUsers={setUsers} notify={notify} close={()=>setSelected(null)}/>}<section className="panel"><div className="panel-head"><div><h3>{rolesOnly?'Staff roles & coverage':'User accounts & approvals'}</h3><p>{rows.length} accounts · Select an account to edit all profile fields.</p></div></div><div className="filter-bar"><label>Search<input placeholder="Name, email or ID" value={term} onChange={e=>setTerm(e.target.value)}/></label><label>Role<select value={role} onChange={e=>setRole(e.target.value)}><option value="">All roles</option>{Object.values(ROLES).map(value=><option key={value}>{value}</option>)}</select></label><label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">All departments</option>{departments.map(value=><option key={value}>{value}</option>)}</select></label><label>Access<select value={access} onChange={e=>setAccess(e.target.value)}><option value="">All access states</option>{['PENDING','APPROVED','REJECTED','REMOVED','DISABLED'].map(value=><option key={value}>{value}</option>)}</select></label></div><div className="table-wrap"><table className="admin-table"><thead><tr><th>User</th><th>Role & coverage</th><th>Access</th><th>Action</th></tr></thead><tbody>{rows.map(user=><tr key={user.uid}><td><b>{user.displayName}</b><span>{user.email}</span><span>{user.registerNumber}</span></td><td>{user.requestedRole||user.role}<span>{user.institution}</span><span>{user.department}{user.year?' · Year '+user.year:''}{user.sections?.length?' · '+formatSections(user.sections):user.section?' · '+user.section:''}{user.hostel?' · '+user.hostel:''}</span></td><td><span className="status">{user.disabled?'DISABLED':user.approvalStatus||'PENDING'}</span></td><td><button className="secondary" onClick={()=>setSelected(user)}>Edit / review</button>{user.uid!==currentUser.uid&&<button className="secondary danger" onClick={()=>setDeleting(user)}>Permanently delete</button>}</td></tr>)}</tbody></table>{!rows.length&&<p className="empty">No accounts match these filters.</p>}</div>{deleting&&<div className="delete-account"><p>Permanently delete {deleting.displayName}? This removes the profile, portal access, register number, and this person&apos;s outpass records. It cannot be undone. The sign-in email stays reserved.</p><button type="button" className="secondary danger" disabled={busy} onClick={()=>remove(deleting)}>{busy?'Deleting…':'Confirm permanent delete'}</button><button type="button" className="text-btn" disabled={busy} onClick={()=>setDeleting(null)}>Cancel</button></div>}</section></section>;
 }
 
 export function AcademicSettings({mode,demo,notify}) {

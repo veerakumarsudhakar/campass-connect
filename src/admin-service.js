@@ -1,6 +1,6 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import { initializeAuth, inMemoryPersistence, createUserWithEmailAndPassword, deleteUser, signOut } from 'firebase/auth';
-import { doc, collection, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, query, where, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { profileForRole, profileError } from './profile-policy';
 
@@ -45,6 +45,49 @@ export async function saveAdminProfile(uid, form, creating = false) {
       after: { role: data.role, registerNumber: data.registerNumber, approvalStatus: data.approvalStatus, disabled: data.disabled } });
   });
   return data;
+}
+
+export async function permanentlyDeleteAccount(person) {
+  const uid = String(person?.uid || '');
+  if (!uid || uid.includes('/')) throw new Error('Choose a valid account.');
+  if (!auth.currentUser || uid === auth.currentUser.uid) throw new Error('Another administrator must delete your account.');
+  const userRef = doc(db, 'users', uid);
+  const lockRef = doc(db, 'accountLocks', uid);
+  const [existing, lock] = await Promise.all([getDoc(userRef), getDoc(lockRef)]);
+  if (!existing.exists() && !lock.exists()) throw new Error('This account no longer exists.');
+  if (existing.exists() && existing.data().accountOperation) throw new Error('This account has an operation in progress. Retry shortly.');
+  const profile = existing.exists() ? existing.data() : person;
+  const registerNumber = profile.registerNumber || '';
+  const [student, session, reservation, passes] = await Promise.all([
+    getDoc(doc(db, 'students', uid)),
+    getDoc(doc(db, 'portalSessions', uid)),
+    registerNumber ? getDoc(doc(db, 'registerNumbers', registerNumber)) : Promise.resolve(null),
+    getDocs(query(collection(db, 'outpasses'), where('studentId', '==', uid))),
+  ]);
+  const extras = [
+    ...(student.exists() ? [student.ref] : []),
+    ...(session.exists() ? [session.ref] : []),
+    ...(reservation?.exists() && reservation.data().uid === uid ? [reservation.ref] : []),
+    ...passes.docs.map(item => item.ref),
+  ];
+  const first = writeBatch(db);
+  if (existing.exists()) {
+    first.set(lockRef, { deleted: true, createdAt: serverTimestamp(), by: auth.currentUser.uid });
+    first.delete(userRef);
+    first.set(doc(collection(db, 'adminAudit')), {
+      actorId: auth.currentUser.uid, targetId: uid, action: 'DELETE_USER', at: serverTimestamp(),
+      before: { role: profile.role || '', registerNumber, approvalStatus: profile.approvalStatus || '', disabled: Boolean(profile.disabled) },
+      after: null,
+    });
+  }
+  const room = existing.exists() ? 497 : 500;
+  extras.slice(0, room).forEach(ref => first.delete(ref));
+  if (existing.exists() || extras.length) await first.commit();
+  for (let index = room; index < extras.length; index += 500) {
+    const batch = writeBatch(db);
+    extras.slice(index, index + 500).forEach(ref => batch.delete(ref));
+    await batch.commit();
+  }
 }
 
 export async function createAdminAccount(form) {

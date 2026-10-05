@@ -137,3 +137,25 @@ result=await write('outpasses/warden-male',{...maleWarden,status:'PENDING_COUNCI
 const femaleWarden={...futurePass,status:'PENDING_WARDEN',gender:'Female',hostel:'Boys hostel'};await write('outpasses/warden-female',femaleWarden);
 result=await write('outpasses/warden-female',{...femaleWarden,status:'PENDING_COUNCILLOR',approvals:[boysEntry]},'boys-warden');assert.equal(result.status,403,result.body);
 console.log('Workflow changes passed: day-scholar outpass at HOD, holiday category, and warden coverage across years.');
+const remove=path=>({delete:docName(path)});
+const stamped=(path,data,stamp)=>({update:{name:docName(path),fields:fields(data)},updateTransforms:stamp.map(fieldPath=>({fieldPath,setToServerValue:'REQUEST_TIME'}))});
+const purge={...approved,role:'Student',requestedRole:'Student',displayName:'Purge Student',department:'CSE',year:2,gender:'Female',section:'A',registerNumber:'PURGE1',institution:'Engineering',studentPhone:'9842012346',parentPhone:'9842012345',studentType:'HOSTELLER',phone:'',hostel:'',position:'',disabled:false,deleted:false};
+await write('users/purge-student',purge);
+await write('students/purge-student',{userId:'purge-student',role:'Student',active:true});
+await write('registerNumbers/PURGE1',{uid:'purge-student',createdAt:new Date()});
+await write('portalSessions/purge-student',{sessionId:'purge-session-0123456789',expiresAt:new Date(Date.now()+90000)});
+await write('outpasses/purge-pass',{...futurePass,studentId:'purge-student',studentName:'Purge Student',registerNumber:'PURGE1'});
+result=await commit('newstudent',[remove('users/purge-student')]);assert.equal(result.status,403,result.body);
+result=await commit('admin',[remove('outpasses/purge-pass')]);assert.equal(result.status,403,result.body);
+result=await commit('admin',[stamped('accountLocks/admin',{deleted:true,by:'admin'},['createdAt']),remove('users/admin')]);assert.equal(result.status,403,result.body);
+result=await commit('admin',[
+  stamped('accountLocks/purge-student',{deleted:true,by:'admin'},['createdAt']),
+  remove('users/purge-student'),
+  remove('students/purge-student'),
+  remove('registerNumbers/PURGE1'),
+  remove('portalSessions/purge-student'),
+  remove('outpasses/purge-pass'),
+  stamped('adminAudit/purge-audit',{actorId:'admin',targetId:'purge-student',action:'DELETE_USER',before:{role:'Student',registerNumber:'PURGE1'},after:null},['at'])
+]);assert.equal(result.status,200,result.body);
+result=await register('purge-student',{...signup,email:'purged@example.test',registerNumber:'PURGE2'});assert.equal(result.status,403,result.body);
+console.log('Permanent account deletion passed: profile, access, register number, and outpasses.');
