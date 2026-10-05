@@ -18,11 +18,4 @@ export function filterRequests(records, { status = 'all', institution = '', depa
 export function hostelForGender(gender) {
   return gender === 'Male' ? 'Boys hostel' : gender === 'Female' ? 'Girls hostel' : 'Hostel assignment required';
 }
-export function matchesScope(record, user) {
-  const fields = user.role ? roleFields(user.role) : { institution: true, department: true, year: true, section: false, hostel: true };
-  return (!fields.institution || !user.institution || record.institution === user.institution)
-    && (!fields.department || !user.department || record.department === user.department)
-    && (!fields.year || !user.year || Number(record.year) === Number(user.year))
-    && (!fields.section || !user.section || record.section === user.section)
-    && (!fields.hostel || !user.hostel || (record.hostel || hostelForGender(record.gender)) === user.hostel);
-}
+export { matchesStaffScope as matchesScope } from '../functions/academic-policy.js';

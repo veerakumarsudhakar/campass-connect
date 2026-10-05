@@ -7,6 +7,12 @@ service cloud.firestore {
     function hasAccess() { return signedIn() && me().active == true && me().get('disabled', false) == false && me().get('deletionPending', false) == false; }
     function isStaff() { return hasAccess() && me().role != 'Student'; }
     function isAdmin() { return isStaff() && me().role == 'Admin'; }
+    function isShDepartment(value) {
+      return value.matches('(?i)^s&h$')
+        || value.matches('(?i)^science and humanities$')
+        || value.matches('(?i)^science and humanities \\(s&h\\)$');
+    }
+    function isEngineeringName(value) { return value.matches('(?i).*engineering.*'); }
     function validContacts(data) {
       return data.get('studentPhone', '').matches('^[6-9][0-9]{9}$')
         && data.get('parentPhone', '').matches('^[6-9][0-9]{9}$')
@@ -14,23 +20,29 @@ service cloud.firestore {
     }
     function validProfile(data) {
       let role = data.get('requestedRole', data.role);
+      let common = role in ['Class Advisor','HOD'] && isShDepartment(data.get('department', ''));
       return role in ['Student','Class Advisor','HOD','Principal','Year Warden','Resident Councillor','Security','Admin']
         && data.displayName is string && data.displayName.size() > 0
-        && data.get('registerNumber', '').matches('^[A-Z0-9_-]+$')
+        && data.get('registerNumber', '').matches('^[A-Z0-9_-]+$') && data.get('registerNumber', '').size() <= 40
         && (!(role in ['Student','Class Advisor','HOD','Principal']) || data.get('institution', '').size() > 0)
         && (!(role in ['Student','Class Advisor','HOD']) || data.get('department', '').size() > 0)
-        && (!(role in ['Student','Class Advisor','Year Warden']) || data.get('year', 0) in [1,2,3,4])
-        && (!(role in ['Student','Class Advisor']) || data.get('section', '').size() > 0)
+        && (!(role in ['Student','Class Advisor','Year Warden']) || (common || data.get('year', 0) in [1,2,3,4,5,6,7,8]))
+        && (!(role in ['Student','Class Advisor']) || common || data.get('section', '').size() > 0)
         && (!(role in ['Year Warden','Resident Councillor']) || data.get('hostel', '') in ['Boys hostel','Girls hostel'])
+        && (!common || (isEngineeringName(data.get('institution', '')) && data.get('year', 0) == 1))
+        && (!(role == 'Student' && isShDepartment(data.get('department', ''))) || (isEngineeringName(data.get('institution', '')) && data.get('year', 0) == 1))
         && (role != 'Admin' || data.get('position', '').size() > 0)
         && (role == 'Student' ? validContacts(data) && data.get('gender', '') in ['Male','Female','Other']
           && data.get('studentType', 'HOSTELLER') in ['HOSTELLER','DAY_SCHOLAR'] : data.get('phone', '').matches('^[6-9][0-9]{9}$'));
     }
+    function commonFirstYear() {
+      return me().role in ['Class Advisor','HOD'] && isShDepartment(me().get('department', ''));
+    }
     function inScope() {
       return me().role == 'Security'
         || ((!(me().role in ['Class Advisor','HOD','Principal']) || me().get('institution', '') == '' || me().institution == resource.data.get('institution', ''))
-        && (!(me().role in ['Class Advisor','HOD']) || me().get('department', '') == '' || me().department == resource.data.department)
-        && (!(me().role in ['Class Advisor','Year Warden']) || me().get('year', 0) == 0 || me().get('year', null) == null || me().year == resource.data.year)
+        && (commonFirstYear() ? resource.data.year == 1 && isEngineeringName(resource.data.get('institution', '')) : (!(me().role in ['Class Advisor','HOD']) || me().get('department', '') == '' || me().department == resource.data.department))
+        && (commonFirstYear() || !(me().role in ['Class Advisor','Year Warden']) || me().get('year', 0) == 0 || me().get('year', null) == null || me().year == resource.data.year)
         && (me().role != 'Class Advisor' || me().get('section', '') == '' || me().section == resource.data.get('section', ''))
         && (!(me().role in ['Year Warden','Resident Councillor']) || me().get('hostel', '') == '' || me().hostel == resource.data.get('hostel',
           resource.data.get('gender', '') == 'Male' ? 'Boys hostel' : resource.data.get('gender', '') == 'Female' ? 'Girls hostel' : 'Hostel assignment required')));
@@ -53,7 +65,8 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/registerNumbers/$(request.resource.data.registerNumber)).data.uid == userId)
         || (isAdmin() && request.resource.data.active == true
         && request.resource.data.approvalStatus == 'APPROVED'
-        && validProfile(request.resource.data));
+        && validProfile(request.resource.data)
+        && getAfter(/databases/$(database)/documents/registerNumbers/$(request.resource.data.registerNumber)).data.uid == userId);
       allow read: if signedIn() && (userId == request.auth.uid || isStaff());
       allow update: if isAdmin()
         && resource.data.get('disabled', false) == false && resource.data.get('deletionPending', false) == false
@@ -65,7 +78,19 @@ service cloud.firestore {
         && (resource.data.role != 'Admin' || (request.resource.data.role == 'Admin'
           && request.resource.data.active == true && request.resource.data.get('deleted', false) == false))
         && (userId != request.auth.uid || request.resource.data.active == true);
+      allow update: if isAdmin() && validAdminEdit(userId);
       allow delete: if false;
+    }
+    function validAdminEdit(userId) {
+      let data = request.resource.data;
+      return resource.data.get('deletionPending', false) == false && resource.data.get('accountOperation', null) == null
+        && data.diff(resource.data).affectedKeys().hasOnly(['displayName','registerNumber','institution','department','year','section','hostel','position','gender','studentType','studentPhone','parentPhone','phone','role','requestedRole','photoUrl','approvalStatus','active','disabled','deleted','reviewedAt','updatedBy'])
+        && validProfile(data) && data.role == data.requestedRole
+        && data.approvalStatus in ['PENDING','APPROVED','REJECTED','REMOVED']
+        && data.disabled is bool && data.active == (data.approvalStatus == 'APPROVED' && data.disabled == false)
+        && data.updatedBy == request.auth.uid
+        && (userId != request.auth.uid || (data.role == 'Admin' && data.active == true))
+        && getAfter(/databases/$(database)/documents/registerNumbers/$(data.registerNumber)).data.uid == userId;
     }
 
     match /students/{studentId} {
@@ -73,6 +98,9 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.role == 'Student'
         && request.resource.data.active == false;
+      allow create, update: if isAdmin() && request.resource.data.userId == studentId
+        && request.resource.data.role == getAfter(/databases/$(database)/documents/users/$(studentId)).data.role
+        && request.resource.data.active == getAfter(/databases/$(database)/documents/users/$(studentId)).data.active;
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || isStaff());
       allow update: if signedIn() && isStaff() && me().role == 'Year Warden';
       allow delete: if false;
@@ -83,7 +111,11 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/registerNumbers/$(registerNumber))
         && request.resource.data.uid == request.auth.uid
         && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.registerNumber == registerNumber;
-      allow read, update, delete: if false;
+      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['uid','createdAt'])
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.registerNumber == registerNumber;
+      allow read: if isAdmin();
+      allow update: if false;
+      allow delete: if isAdmin() && getAfter(/databases/$(database)/documents/users/$(resource.data.uid)).data.registerNumber != registerNumber;
     }
 
     match /portalSessions/{userId} {
@@ -164,6 +196,24 @@ service cloud.firestore {
         && entry.name == me().displayName
         && entry.decision == (next == 'REJECTED' ? 'REJECTED' : 'APPROVED')
         && (next != 'REJECTED' || entry.remarks.size() > 0);
+    }
+
+    match /settings/academic {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['institutions','years','sections','updatedBy','updatedAt'])
+        && request.resource.data.institutions is list && request.resource.data.institutions.size() > 0 && request.resource.data.institutions.size() <= 20
+        && request.resource.data.years is list && request.resource.data.years.size() > 0 && request.resource.data.years.hasOnly([1,2,3,4,5,6,7,8])
+        && request.resource.data.sections is list && request.resource.data.sections.size() > 0 && request.resource.data.sections.size() <= 50
+        && request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    match /adminAudit/{auditId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && request.resource.data.keys().hasOnly(['actorId','targetId','action','at','before','after'])
+        && request.resource.data.actorId == request.auth.uid && request.resource.data.at == request.time
+        && request.resource.data.action in ['CREATE_USER','EDIT_USER'];
+      allow update, delete: if false;
     }
 
     match /studentDirectory/{studentId} {

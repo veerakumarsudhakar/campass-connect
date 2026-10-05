@@ -1,4 +1,5 @@
 export const ROLES = { STUDENT: 'Student', ADVISOR: 'Class Advisor', HOD: 'HOD', PRINCIPAL: 'Principal', WARDEN: 'Year Warden', COUNCILLOR: 'Resident Councillor', SECURITY: 'Security', ADMIN: 'Admin' };
+import { canonicalDepartment, isCommonFirstYear, isEngineering, isScienceAndHumanities } from './academic-policy.js';
 import { STUDENT_TYPES, studentTypeOf } from './outpass-policy.js';
 
 export function roleFields(role) {
@@ -26,8 +27,8 @@ export function profileForRole(form, role) {
   const fields = roleFields(role);
   return {
     institution: fields.institution ? form.institution || '' : '',
-    department: fields.department ? form.department || '' : '',
-    year: fields.year ? Number(form.year) || null : null,
+    department: fields.department ? canonicalDepartment(form.department) : '',
+    year: isCommonFirstYear({...form,role}) ? 1 : fields.year ? Number(form.year) || null : null,
     section: fields.section ? String(form.section || '').trim() : '',
     hostel: fields.hostel ? form.hostel || '' : '',
     position: fields.position ? String(form.position || '').trim() : '',
@@ -40,11 +41,14 @@ export function profileForRole(form, role) {
 }
 
 export function profileError(form, role) {
-  const fields = roleFields(role);
+  const fields = roleFields(role), common = isCommonFirstYear({...form,role});
+  if (!Object.values(ROLES).includes(role)) return 'Choose a valid role.';
+  if (common && !isEngineering(form.institution)) return 'S&H common-year coverage requires an Engineering institution.';
   for (const key of ['institution', 'department', 'year', 'section', 'hostel', 'position']) {
-    if (fields[key] && !String(form[key] || '').trim()) return `Please provide ${key}.`;
+    if (fields[key] && !(common && ['year','section'].includes(key)) && !String(form[key] || '').trim()) return `Please provide ${key}.`;
   }
-  if (fields.year && ![1, 2, 3, 4].includes(Number(form.year))) return 'Choose a year from 1 to 4.';
+  if (fields.year && !common && (!Number.isInteger(Number(form.year)) || Number(form.year)<1 || Number(form.year)>8)) return 'Choose a year from 1 to 8.';
+  if (role === ROLES.STUDENT && isScienceAndHumanities(form.department) && (!isEngineering(form.institution) || Number(form.year) !== 1)) return 'Science and Humanities is the common first-year Engineering department.';
   if (role === ROLES.STUDENT) return !Object.hasOwn(STUDENT_TYPES, studentTypeOf(form)) ? 'Choose Hosteller or Day scholar.' : !form.gender ? 'Choose gender.' : contactError(form.studentPhone, form.parentPhone);
   return validPhone(form.phone) ? '' : 'Enter a valid 10-digit official mobile number.';
 }

@@ -8,6 +8,12 @@ async function write(path,data,actor='owner'){const response=await fetch(`${root
 async function register(uid,profile){const response=await fetch(root+':commit',{method:'POST',headers:{Authorization:`Bearer ${token(uid)}`,'Content-Type':'application/json'},body:JSON.stringify({writes:[{update:{name:`projects/${project}/databases/(default)/documents/users/${uid}`,fields:fields(profile)}},{update:{name:`projects/${project}/databases/(default)/documents/registerNumbers/${profile.registerNumber}`,fields:fields({uid,createdAt:new Date()})}}]})});return {status:response.status,body:await response.text()};}
 const approved={active:true,approvalStatus:'APPROVED'};
 for(const [uid,profile] of Object.entries({admin:{...approved,role:'Admin',displayName:'Admin'},advisor:{...approved,role:'Class Advisor',displayName:'Dr Advisor',department:'CSE'},inactive:{active:false,role:'HOD',displayName:'Inactive'},warden:{...approved,role:'Year Warden',displayName:'Warden',hostel:'Girls hostel'},principal:{...approved,role:'Principal',displayName:'Principal'},student:{...approved,role:'Student',displayName:'Student',department:'CSE',year:2,gender:'Female',section:'A'}}))assert.equal((await write(`users/${uid}`,profile)).status,200);
+// Sign-in reads a missing session before claiming it. Admin access must support both operations.
+let sessionRead=await fetch(`${root}/portalSessions/admin`,{headers:{Authorization:`Bearer ${token('admin')}`}});assert.equal(sessionRead.status,404);
+const adminSession={sessionId:'admin-sign-in-session-0123456789',expiresAt:new Date(Date.now()+90000)};
+let adminClaim=await write('portalSessions/admin',adminSession,'admin');assert.equal(adminClaim.status,200,adminClaim.body);
+sessionRead=await fetch(`${root}/portalSessions/admin`,{headers:{Authorization:`Bearer ${token('admin')}`}});assert.equal(sessionRead.status,200);
+sessionRead=await fetch(`${root}/portalSessions/admin`,{headers:{Authorization:`Bearer ${token('inactive')}`}});assert.equal(sessionRead.status,403);
 const pass={studentId:'student',studentName:'Student',registerNumber:'REG1',department:'CSE',year:2,gender:'Female',section:'A',status:'PENDING_ADVISOR',approvals:[]};
 assert.equal((await write('outpasses/one',pass)).status,200);
 const entry={role:'Class Advisor',approverId:'advisor',name:'Dr Advisor',decision:'APPROVED',remarks:'',at:'2026-10-03'};
@@ -70,3 +76,40 @@ await write('users/security',{...approved,role:'Security',displayName:'Gate offi
 await write('outpasses/locked-exit',{...futurePass,status:'APPROVED'});
 result=await write('outpasses/locked-exit',{...futurePass,status:'CURRENTLY_OUT'},'security');assert.equal(result.status,403,result.body);
 console.log('Document update checks passed: registration uniqueness, contacts, locked profiles, role scope, session leases and mandatory server gate validation.');
+
+async function commit(actor,writes){const response=await fetch(root+':commit',{method:'POST',headers:{Authorization:`Bearer ${token(actor)}`,'Content-Type':'application/json'},body:JSON.stringify({writes})});return {status:response.status,body:await response.text()};}
+const docName=path=>`projects/${project}/databases/(default)/documents/${path}`;
+const update=(path,data)=>({update:{name:docName(path),fields:fields(data)}});
+const engineering='STUDY WORLD COLLEGE OF ENGINEERING';
+const staffBase={institution:'',department:'',year:null,section:'',hostel:'',position:'',gender:'',studentType:'',studentPhone:'',parentPhone:'',phone:'9842011111',photoUrl:'',disabled:false,deleted:false,active:true,approvalStatus:'APPROVED'};
+await write('users/full-admin',{...staffBase,role:'Admin',requestedRole:'Admin',displayName:'Full Admin',registerNumber:'ADMIN1',position:'Registrar',email:'full-admin@example.test'});
+await write('registerNumbers/ADMIN1',{uid:'full-admin',createdAt:new Date()});
+const demoted={...staffBase,role:'Security',requestedRole:'Security',displayName:'Full Admin',registerNumber:'ADMIN1',email:'full-admin@example.test',reviewedAt:new Date(),updatedBy:'full-admin'};
+result=await commit('full-admin',[update('users/full-admin',demoted)]);assert.equal(result.status,403,result.body);
+result=await commit('admin',[update('users/full-admin',{...demoted,updatedBy:'admin'})]);assert.equal(result.status,200,result.body);
+const createdStaff={...staffBase,role:'Security',requestedRole:'Security',displayName:'Gate Two',registerNumber:'STAFFNEW',email:'staffnew@example.test',phone:'9842012222'};
+result=await commit('admin',[update('users/staff-new',createdStaff),update('registerNumbers/STAFFNEW',{uid:'staff-new',createdAt:new Date()})]);assert.equal(result.status,200,result.body);
+result=await commit('admin',[update('users/staff-dup',{...createdStaff,displayName:'Gate Three',email:'staffdup@example.test',registerNumber:'STAFFNEW'}),update('registerNumbers/STAFFNEW',{uid:'staff-dup',createdAt:new Date()})]);assert.equal(result.status,403,result.body);
+const shStudent={displayName:'First Year',email:'shstudent@example.test',registerNumber:'SHSTU1',institution:engineering,department:'SCIENCE AND HUMANITIES (S&H)',year:1,section:'A',gender:'Female',studentPhone:'9842012346',parentPhone:'9842012345',studentType:'HOSTELLER',role:'Student',requestedRole:'Student',active:true,approvalStatus:'APPROVED',disabled:false,deleted:false,phone:'',hostel:'',position:'',photoUrl:''};
+result=await commit('admin',[update('users/sh-student',shStudent),update('registerNumbers/SHSTU1',{uid:'sh-student',createdAt:new Date()})]);assert.equal(result.status,200,result.body);
+result=await commit('admin',[update('users/sh-student-late',{...shStudent,email:'shlate@example.test',registerNumber:'SHSTU2',year:2}),update('registerNumbers/SHSTU2',{uid:'sh-student-late',createdAt:new Date()})]);assert.equal(result.status,403,result.body);
+await write('users/sh-advisor',{...approved,role:'Class Advisor',displayName:'S&H Advisor',institution:engineering,department:'s&h',year:1,section:'A',phone:'9842012345'});
+const yearOne={...futurePass,institution:engineering,department:'EEE',year:1,section:'A',status:'PENDING_ADVISOR'};
+await write('outpasses/sh-year1',yearOne);
+const shEntry={role:'Class Advisor',approverId:'sh-advisor',name:'S&H Advisor',decision:'APPROVED',remarks:'',at:'2026-10-05'};
+result=await write('outpasses/sh-year1',{...yearOne,status:'PENDING_HOD',approvals:[shEntry]},'sh-advisor');assert.equal(result.status,200,result.body);
+const yearTwo={...yearOne,year:2};await write('outpasses/sh-year2',yearTwo);
+result=await write('outpasses/sh-year2',{...yearTwo,status:'PENDING_HOD',approvals:[shEntry]},'sh-advisor');assert.equal(result.status,403,result.body);
+const otherSection={...yearOne,section:'B'};await write('outpasses/sh-section',otherSection);
+result=await write('outpasses/sh-section',{...otherSection,status:'PENDING_HOD',approvals:[shEntry]},'sh-advisor');assert.equal(result.status,403,result.body);
+const artsPass={...yearOne,institution:'STUDY WORLD COLLEGE OF ARTS AND SCIENCE'};await write('outpasses/sh-arts',artsPass);
+result=await write('outpasses/sh-arts',{...artsPass,status:'PENDING_HOD',approvals:[shEntry]},'sh-advisor');assert.equal(result.status,403,result.body);
+const otherCollege={...yearOne,institution:'NORTH ENGINEERING COLLEGE'};await write('outpasses/sh-other-college',otherCollege);
+result=await write('outpasses/sh-other-college',{...otherCollege,status:'PENDING_HOD',approvals:[shEntry]},'sh-advisor');assert.equal(result.status,403,result.body);
+await write('users/sh-hod',{...approved,role:'HOD',displayName:'S&H HOD',institution:engineering,department:'SCIENCE AND HUMANITIES (S&H)',year:1,phone:'9842012345'});
+const shHodPass={...yearOne,section:'B',status:'PENDING_HOD'};await write('outpasses/sh-hod',shHodPass);
+const hodEntry={role:'HOD',approverId:'sh-hod',name:'S&H HOD',decision:'APPROVED',remarks:'',at:'2026-10-05'};
+result=await write('outpasses/sh-hod',{...shHodPass,status:'PENDING_PRINCIPAL',approvals:[hodEntry]},'sh-hod');assert.equal(result.status,200,result.body);
+const hodYearTwo={...shHodPass,year:2};await write('outpasses/sh-hod-year2',hodYearTwo);
+result=await write('outpasses/sh-hod-year2',{...hodYearTwo,status:'PENDING_PRINCIPAL',approvals:[hodEntry]},'sh-hod');assert.equal(result.status,403,result.body);
+console.log('Admin edit checks passed: self-lockout, duplicate IDs, and S&H coverage limited to first-year Engineering.');

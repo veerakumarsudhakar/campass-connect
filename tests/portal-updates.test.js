@@ -5,6 +5,38 @@ import { contactError, formatDateTime, gateError, profileForRole, profileError, 
 import { filterRequests, matchesScope } from '../src/portal-filters.js';
 import { parseStudentCsv } from '../src/student-import.js';
 import { categoryOf, studentTypeOf, outpassClassificationError, permissionProgress } from '../functions/outpass-policy.js';
+import { SCIENCE_AND_HUMANITIES, canonicalDepartment, normalizeCatalog } from '../functions/academic-policy.js';
+
+test('S&H covers first-year Engineering across majors and respects institution and advisor section',()=>{
+  const staff={role:'Class Advisor',institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:SCIENCE_AND_HUMANITIES,section:'A',phone:'9842012345'};
+  assert.equal(profileError(staff,staff.role),'');
+  assert.equal(profileForRole(staff,staff.role).year,1);
+  const pass={institution:staff.institution,department:'EEE',year:1,section:'A'};
+  assert.equal(matchesScope(pass,staff),true);
+  assert.equal(matchesScope({...pass,year:2},staff),false);
+  assert.equal(matchesScope({...pass,section:'B'},staff),false);
+  assert.equal(matchesScope({...pass,institution:'ARTS'},staff),false);
+  assert.equal(matchesScope({...pass,section:'B'},{...staff,section:''}),true);
+  assert.equal(matchesScope({...pass,section:'B'},{...staff,role:'HOD'}),true);
+  assert.match(profileError({...staff,institution:'Arts'},staff.role),/Engineering/);
+  const alias={role:'HOD',institution:'study world college of engineering',department:'s&h',phone:'9842012345'};
+  assert.equal(profileError(alias,alias.role),'');
+  assert.equal(profileForRole(alias,alias.role).department,SCIENCE_AND_HUMANITIES);
+  assert.equal(profileForRole(alias,alias.role).year,1);
+  assert.equal(matchesScope({institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:'MECHNICAL ENGINEERING',year:1,section:'C'},alias),false);
+  assert.equal(matchesScope({institution:alias.institution,department:'MECHNICAL ENGINEERING',year:1,section:'C'},alias),true);
+  assert.equal(matchesScope({institution:alias.institution,department:'MECHNICAL ENGINEERING',year:2,section:'C'},alias),false);
+  assert.equal(matchesScope({institution:'STUDY WORLD COLLEGE OF ARTS AND SCIENCE',department:'CSE',year:1,section:'A'},{...alias,institution:'STUDY WORLD COLLEGE OF ARTS AND SCIENCE'}),false);
+  const student={role:'Student',institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:'s&h',year:2,section:'A',gender:'Female',studentPhone:'9842012346',parentPhone:'9842012345',studentType:'HOSTELLER'};
+  assert.match(profileError(student,student.role),/first-year/);
+  assert.equal(profileError({...student,year:1},student.role),'');
+  assert.equal(canonicalDepartment('SCIENCE AND HUMANITIES'),SCIENCE_AND_HUMANITIES);
+  const catalog=normalizeCatalog({institutions:[{name:' STUDY WORLD COLLEGE OF ENGINEERING ',departments:['CSE','s&h','SCIENCE AND HUMANITIES']}],years:['1','1','2'],sections:['a','A']});
+  assert.deepEqual(catalog.institutions[0].departments,['CSE',SCIENCE_AND_HUMANITIES]);
+  assert.deepEqual(catalog.years,[1,2]);
+  assert.deepEqual(normalizeCatalog({institutions:[{name:'Engineering',departments:['CSE']}],years:[3,4],sections:['A']}).years,[1,3,4]);
+  assert.deepEqual(catalog.sections,['A']);
+});
 
 test('outpass categories and student types preserve legacy defaults and permission levels',()=>{
   assert.equal(categoryOf({}),'OUTING');assert.equal(studentTypeOf({}),'HOSTELLER');

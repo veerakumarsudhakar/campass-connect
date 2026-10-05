@@ -32,7 +32,7 @@ export function parseStudentCsv(text, user) {
     if (!Object.hasOwn(STUDENT_TYPES, record.studentType)) throw new Error(`Row ${i + 2}: studentType must be HOSTELLER or DAY_SCHOLAR.`);
     record.registerNumber = record.registerNumber.toUpperCase(); record.year = Number(record.year);
     const error = contactError(record.studentPhone, record.parentPhone);
-    if (required.some(key => !record[key]) || ![1, 2, 3, 4].includes(record.year) || !['Female', 'Male', 'Other'].includes(record.gender) || error) throw new Error(`Row ${i + 2}: ${error || 'Complete all student fields with a valid year and gender.'}`);
+    if (required.some(key => !record[key]) || (!Number.isInteger(record.year) || record.year<1 || record.year>8) || !['Female', 'Male', 'Other'].includes(record.gender) || error) throw new Error(`Row ${i + 2}: ${error || 'Complete all student fields with a valid year and gender.'}`);
     if (!/^[A-Z0-9_-]+$/.test(record.registerNumber)) throw new Error(`Row ${i + 2}: Invalid register number.`);
     if (seen.has(record.registerNumber)) throw new Error(`Row ${i + 2}: Duplicate register number ${record.registerNumber}.`);
     if (user && !matchesScope(record, user)) throw new Error(`Row ${i + 2} is outside your assigned coverage.`);

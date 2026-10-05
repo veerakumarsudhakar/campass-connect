@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 test('portal markup presents the document-requested fields and separate admin overview', async () => {
   process.env.VITE_FIREBASE_API_KEY='';process.env.VITE_FIREBASE_PROJECT_ID='';
-  const server=await createServer({server:{middlewareMode:true},appType:'custom',plugins:[{name:'portal-test-exports',enforce:'pre',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/App.jsx'))return code+'\nexport { ProfileFields, StudentHome, AdminOverview, RequestTable, OutpassForm };';}}]});
+  const server=await createServer({server:{middlewareMode:true},appType:'custom',plugins:[{name:'portal-test-exports',enforce:'pre',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/App.jsx'))return code+'\nexport { ProfileFields, StudentHome, AdminOverview, RequestTable, OutpassForm, Portal };';}}]});
   try {
     const app=await server.ssrLoadModule('/src/App.jsx');
     const render=(component,props)=>renderToStaticMarkup(React.createElement(component,props));
@@ -30,6 +30,18 @@ test('portal markup presents the document-requested fields and separate admin ov
     const overview=render(app.AdminOverview,{users:[],records:[],openApprovals:()=>{}});
     assert.match(overview,/Open user approvals/);
     assert.doesNotMatch(overview,/admin-table|Create approved access/);
+    assert.match(overview,/Create users/);assert.match(overview,/Departments/);assert.match(overview,/Years &amp; sections/);assert.match(overview,/S&amp;H coverage/);
+    const portal=render(app.Portal,{user:{uid:'admin',role:'Admin',displayName:'Ada Admin',active:true,approvalStatus:'APPROVED'},demo:true,logout:()=>{},notify:()=>{}});
+    for (const label of ['Create users','Manage users','Roles &amp; coverage','Departments','Years &amp; sections','S&amp;H coverage']) assert.match(portal,new RegExp(label));
+    const admin=await server.ssrLoadModule('/src/AdminWorkspace.jsx');
+    const science=render(admin.ScienceCoverage,{users:[{uid:'sh',displayName:'Dr. Meera',email:'meera@example.test',registerNumber:'SH1',role:'Class Advisor',department:'SCIENCE AND HUMANITIES (S&H)',institution:'STUDY WORLD COLLEGE OF ENGINEERING',section:'A',approvalStatus:'APPROVED'}],currentUser:{uid:'admin'},demo:true,notify:()=>{}});
+    assert.match(science,/common first year/);assert.match(science,/Year 2 and above/);assert.match(science,/Dr. Meera/);assert.match(science,/Edit role/);
+    const createUser=render(admin.UserEditor,{currentUser:{uid:'admin'},demo:true,notify:()=>{}});
+    assert.match(createUser,/Create a new user/);assert.match(createUser,/Temporary password/);assert.match(createUser,/Student type/);
+    const editUser=render(admin.UserEditor,{person:{uid:'student',email:'student@example.test',role:'Student',approvalStatus:'APPROVED'},currentUser:{uid:'admin'},demo:true,notify:()=>{},close:()=>{}});
+    assert.match(editUser,/Save account changes/);assert.match(editUser,/Archived/);assert.match(editUser,/Send password reset/);assert.doesNotMatch(editUser,/Temporary password/);
+    const sh=render(app.ProfileFields,{form:{...form,institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:'SCIENCE AND HUMANITIES (S&H)'},set:()=>{},role:'Class Advisor'});
+    assert.match(sh,/All sections/);assert.match(sh,/Common first-year Engineering/);assert.doesNotMatch(sh,/>Year coverage</);
     const requestTable=render(app.RequestTable,{records:[],role:'HOD',user:{},notify:()=>{}});
     assert.match(requestTable,/Departure date/);
     assert.doesNotMatch(requestTable,/>Year<|>Section</);

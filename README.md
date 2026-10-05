@@ -2,6 +2,8 @@
 
 ## Portal updates
 
+Firebase deployment targets `campass-connect-d4f45` through `.firebaserc`. Run `npm run deploy:rules` when updating Firestore rules, or `npm run deploy:backend` for both rules and callable functions. Local development and the live Vercel app use this same backend. Deploy backend changes before publishing a frontend that depends on them; missing `portalSessions` rules prevent approved users from completing sign-in.
+
 Outpasses now include **Outing**, **Emergency**, and **On duty** categories and a verified **Hosteller** / **Day scholar** student type. Registration and approved-account creation capture the type; administrators can update it from User approvals using `setStudentType`, which keeps linked student profiles in sync. Existing passes retain the type recorded when submitted. Old profiles/passes default to Hosteller and Outing. The CSV importer accepts an optional studentType column with HOSTELLER or DAY_SCHOLAR.
 
 The request form shows category and the numbered permission flow. Emergency requests sort first in staff queues. Category/type filters are available on request tables. All categories and types currently retain the five existing approvals; category-specific or Day-scholar shortcuts await a campus policy decision. Students cannot use the new fields to skip permission levels.

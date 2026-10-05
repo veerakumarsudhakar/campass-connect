@@ -1,3 +1,4 @@
+import { matchesStaffScope as inScope } from './academic-policy.js';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { initializeApp } from 'firebase-admin/app';
@@ -59,14 +60,6 @@ export const setStudentType=onCall(async req=>{
     const changes={studentType,reviewedAt:FieldValue.serverTimestamp()};tx.update(userRef,changes);if(student.exists)tx.update(studentRef,{studentType});
   });return {studentType};
 });
-function inScope(pass,user){
-  const fields=roleFields(user.role);
-  return (!fields.institution||!user.institution||pass.institution===user.institution)
-    &&(!fields.department||!user.department||pass.department===user.department)
-    &&(!fields.year||!user.year||Number(pass.year)===Number(user.year))
-    &&(!fields.section||!user.section||pass.section===user.section)
-    &&(!fields.hostel||!user.hostel||(pass.hostel||(pass.gender==='Male'?'Boys hostel':pass.gender==='Female'?'Girls hostel':'Hostel assignment required'))===user.hostel);
-}
 export const registerStudent=onCall(async req=>{
   const data=req.data||{},displayName=clean(data.displayName),email=clean(data.email,160).toLowerCase(),registerNumber=clean(data.registerNumber,40).toUpperCase();
   const invalid=profileError(data,ROLES.STUDENT);
