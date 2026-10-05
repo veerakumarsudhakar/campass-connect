@@ -1,7 +1,6 @@
-export const ROLES = {
-  STUDENT: 'Student', ADVISOR: 'Class Advisor', HOD: 'HOD', PRINCIPAL: 'Principal',
-  WARDEN: 'Year Warden', COUNCILLOR: 'Resident Councillor', SECURITY: 'Security', ADMIN: 'Admin'
-};
+import { ROLES } from '../functions/portal-policy.js';
+import { APPROVAL_STEPS } from '../functions/outpass-policy.js';
+export { ROLES };
 
 export const QUEUE_FOR_ROLE = {
   [ROLES.ADVISOR]: 'PENDING_ADVISOR', [ROLES.HOD]: 'PENDING_HOD',
@@ -16,5 +15,5 @@ export const STATUS_LABEL = {
   CURRENTLY_OUT: 'Currently out', CLEARED: 'Cleared', REJECTED: 'Rejected'
 };
 
-export const STEPS = ['Class Advisor', 'HOD', 'Principal', 'Year Warden', 'Resident Councillor'];
+export const STEPS = APPROVAL_STEPS;
 export const prettyStatus = (status) => STATUS_LABEL[status] || status?.replaceAll('_', ' ');

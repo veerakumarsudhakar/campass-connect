@@ -2,9 +2,27 @@
 
 ## Portal updates
 
+Outpasses now include **Outing**, **Emergency**, and **On duty** categories and a verified **Hosteller** / **Day scholar** student type. Registration and approved-account creation capture the type; administrators can update it from User approvals using `setStudentType`, which keeps linked student profiles in sync. Existing passes retain the type recorded when submitted. Old profiles/passes default to Hosteller and Outing. The CSV importer accepts an optional studentType column with HOSTELLER or DAY_SCHOLAR.
+
+The request form shows category and the numbered permission flow. Emergency requests sort first in staff queues. Category/type filters are available on request tables. All categories and types currently retain the five existing approvals; category-specific or Day-scholar shortcuts await a campus policy decision. Students cannot use the new fields to skip permission levels.
+
+The pass uses a cream ticket layout based on the supplied reference, with student photo, institution, contacts, category/type, travel times, permission level, approval stamps and a security-gate record. It shows actual exit/return times only when recorded; missing historical approvals are identified as unavailable. Approved passes retain their gate QR and QR download action. **Print / save PDF** opens a print view containing only the selected pass. Returned passes are also available under My passes. Deploy the new callable functions and updated rules with the frontend.
+
+The October 2026 document changes add role-specific required registration fields and an official mobile number for staff. HODs cover all years and sections in their department; Principals cover their institution; Year Wardens cover a hostel and year; Resident Councillors cover a hostel. Admin accounts require a position. Student and parent Indian mobile numbers must be valid and different, including when entered with country codes.
+
+The student welcome uses “Your campus. Your journey.” The extra profile strip and active-pass card below that welcome are removed; QR passes are available under **My passes**, with previous requests under **Request history**. Institution and department are read-only when requesting an outpass. Dates display as DD/MM/YYYY in Indian time, and departure-date filters are available for request history and gate lookup. Password fields have show/hide controls. Every displayed registration field is required, including the profile photo.
+
+**Admin overview** shows campus metrics separately from **User approvals**. The app starts on sign-in rather than automatically opening the preview or an old persistent local login. Approved portal sessions use a 90-second Firestore lease, renewed every 25 seconds; a second device is blocked while that lease is live. Browsers supporting Web Locks also block duplicate tabs. Sign-out releases the lease. A closed or disconnected session may take up to 90 seconds to expire. Registration IDs remain unique.
+
+Gate movement requires a gate name and uses the `logGateMovement` callable, which checks the departure and expiry times on the server and writes gate/audit logs. Early and expired exits are blocked; overdue students can still return. Existing passes with ISO date strings remain supported by the callable. Direct client gate writes are denied. Staff CSV uploads show a validated review table before the `importStudentDirectory` callable imports data; include studentPhone and parentPhone in addition to the existing columns. Admin account creation uses the `createApprovedAccount` callable so authentication, profile creation, and ID reservation are handled together.
+
+Deploy the updated functions and Firestore rules together **before serving the updated frontend**. The existing backend deployment requirements below still apply. Populate existing Principals' institution and other staff coverage/contact fields as needed; existing empty coverage fields retain their previous broad coverage. Run `npm test`, `npm run test:rules`, and `npm run build` to verify these changes. Browser notifications report new status changes after the initial snapshot; administrator notifications show pending access requests.
+
+Items awaiting clarification from the supplied document: the meaning and coverage of **S&H**, whether the instruction to remove content below the student welcome includes anything beyond the removed profile/pass block, and the campus's gate choices. The gate is currently a required text field. “Upload review” is implemented as CSV review; supporting permission letters can also be opened from request review.
+
 Dashboard counts open matching request or account views. Administrators can filter users by access status, requested role, and department, and see approved counts for each role. All administrators subscribe to the same Firestore users collection; account changes also update the affected user's open session.
 
-Students have separate in-progress, approved, and rejected views and supply their own mobile number. Staff can filter requests by department and year, with section filters for Advisors and HODs. Registration and admin account creation show section fields only for Students and Class Advisors. Approval trails display the signed-in approver's name and UID. Principal approval assigns male students to Boys hostel and female students to Girls hostel; other values require hostel assignment. Wardens and Resident Councillors can request hostel coverage when registering. Existing staff profiles need their coverage fields populated by the campus administrator.
+Students have separate in-progress, approved, and rejected views and supply their own mobile number. Staff request filters follow each role's profile fields, with section filters for Class Advisors. Approval trails display the signed-in approver's name and UID. Principal approval assigns male students to Boys hostel and female students to Girls hostel; other values require hostel assignment. Wardens and Resident Councillors choose hostel coverage when registering. Existing staff profiles need their coverage fields populated by the campus administrator.
 
 **Delete account** permanently deletes the Firebase Authentication account, user profile, linked student profile, and register-number reservation after confirmation. Outpass history remains. **Disable account** blocks Firebase sign-in, revokes refresh tokens, and removes portal access. **Enable account** restores sign-in; pending or rejected accounts still require approval. These controls apply to all roles, including other administrators. Another administrator must manage your own account. Incomplete deletion stays blocked and offers a retry.
 
@@ -49,14 +67,14 @@ Create Firestore user profiles after creating Auth users. Role strings must exac
 
 ## User registration
 
-Students can use **Create your CampusPass account** from the sign-in screen. It uses Firebase Authentication plus an atomic Firestore batch to create linked `users`, `students`, and protected `registerNumbers` records—no Cloud Functions deployment or paid Firebase plan is required. It only ever grants the `Student` role. Staff roles must be provisioned by an administrator.
+Users can use **Create your CampusPass account** from the sign-in screen. Registration uses Firebase Authentication plus an atomic Firestore batch to create a pending profile and reserve the ID; student requests also create a linked `students` record. Registration requires administrator approval and never grants staff permissions directly. Admin-created approved accounts use a callable function.
 
 ## Admin approvals
 
-New student accounts are created with `approvalStatus: 'PENDING'` and cannot access the portal until approved. Create the first administrator in Firebase Authentication and create the matching `users/{uid}` document in the Firebase Console with at least `displayName`, `email`, `role: 'Admin'`, `active: true`, and `approvalStatus: 'APPROVED'`. The **Admin overview** then provides live user approval, role assignment, and campus outpass analysis. Deploy `firestore.rules` after this change:
+New accounts are created with `approvalStatus: 'PENDING'` and cannot access the portal until approved. Create the first administrator in Firebase Authentication and create the matching `users/{uid}` document in the Firebase Console with at least `displayName`, `email`, `role: 'Admin'`, `position`, `phone`, `active: true`, and `approvalStatus: 'APPROVED'`. **User approvals** provides account verification and role assignment; **Admin overview** provides campus activity metrics. Deploy the updated functions and `firestore.rules` together:
 
 ```powershell
-firebase deploy --only firestore:rules
+firebase deploy --only functions,firestore:rules
 ```
 
 Without Firebase values, the app opens an interactive visual preview. In connected mode, request creation, decisions, gate logs, audit events, and dashboard data are stored in Firebase.

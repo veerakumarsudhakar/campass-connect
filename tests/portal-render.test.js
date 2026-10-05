@@ -1,0 +1,55 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'vite';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+
+test('portal markup presents the document-requested fields and separate admin overview', async () => {
+  process.env.VITE_FIREBASE_API_KEY='';process.env.VITE_FIREBASE_PROJECT_ID='';
+  const server=await createServer({server:{middlewareMode:true},appType:'custom',plugins:[{name:'portal-test-exports',enforce:'pre',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/App.jsx'))return code+'\nexport { ProfileFields, StudentHome, AdminOverview, RequestTable, OutpassForm };';}}]});
+  try {
+    const app=await server.ssrLoadModule('/src/App.jsx');
+    const render=(component,props)=>renderToStaticMarkup(React.createElement(component,props));
+    const form={institution:'',department:'',year:'',section:'',hostel:'',position:'',phone:'',studentPhone:'',parentPhone:'',gender:''};
+    const fields=role=>render(app.ProfileFields,{form,set:()=>{},role});
+    assert.match(fields('Principal'),/>Institution</);
+    assert.doesNotMatch(fields('Principal'),/>Department<|>Year coverage<|>Section</);
+    assert.doesNotMatch(fields('HOD'),/>Year coverage<|>Section</);
+    assert.match(fields('HOD'),/>Department</);
+    assert.doesNotMatch(fields('Resident Councillor'),/>Department<|>Year coverage</);
+    assert.match(fields('Resident Councillor'),/>Official mobile number</);
+    assert.match(fields('Admin'),/>Position</);
+    assert.doesNotMatch(fields('Admin'),/>Department<|>Year coverage</);
+    const login=render(app.CampusPassApp);
+    assert.match(login,/Show password/);
+    assert.match(login,/Create your CampusPass account/);
+    assert.doesNotMatch(login,/Preview mode is active/);
+    const home=render(app.StudentHome,{user:{registerNumber:'REG1'}});
+    assert.match(home,/Your campus\. Your journey\./);
+    assert.doesNotMatch(home,/student-meta|pass-card/);
+    const overview=render(app.AdminOverview,{users:[],records:[],openApprovals:()=>{}});
+    assert.match(overview,/Open user approvals/);
+    assert.doesNotMatch(overview,/admin-table|Create approved access/);
+    const requestTable=render(app.RequestTable,{records:[],role:'HOD',user:{},notify:()=>{}});
+    assert.match(requestTable,/Departure date/);
+    assert.doesNotMatch(requestTable,/>Year<|>Section</);
+    const studentFields=fields('Student');
+    assert.match(studentFields,/Student type/);
+    assert.match(studentFields,/Day scholar/);
+    const requestForm=render(app.OutpassForm,{user:{studentType:'DAY_SCHOLAR'},demo:true,notify:()=>{}});
+    assert.match(requestForm,/Outing/);assert.match(requestForm,/Emergency/);assert.match(requestForm,/On duty/);
+    assert.match(requestForm,/Full campus approval/);
+    assert.match(requestForm,/Day scholar/);
+    const {PassCard}=await server.ssrLoadModule('/src/PassCard.jsx');
+    const pass=render(PassCard,{record:{id:'TEST1',studentName:'Arun Kumar',studentType:'DAY_SCHOLAR',category:'ON_DUTY',status:'PENDING_HOD',approvals:[{role:'Class Advisor',decision:'APPROVED',name:'Dr. Meera'}]}});
+    assert.match(pass,/pass-ticket/);assert.match(pass,/Permission trail/);
+    assert.match(pass,/Level 2 of 5/);assert.match(pass,/Day scholar/);assert.match(pass,/On duty/);
+    assert.match(pass,/Dr. Meera/);assert.doesNotMatch(pass,/ticket-qr/);
+    const returnedPass=render(PassCard,{record:{id:'TEST2',studentName:'Arun',studentType:'DAY_SCHOLAR',category:'EMERGENCY',status:'CLEARED',entryAt:'2026-10-05T10:00:00Z',responsibilityAccepted:true}});
+    assert.match(returnedPass,/Returned to campus/);assert.match(returnedPass,/05\/10\/2026/);
+    assert.match(returnedPass,/Student accepted responsibility/);
+    assert.doesNotMatch(returnedPass,/ticket-qr/);
+    const issuedPass=render(PassCard,{record:{id:'TEST3',studentName:'Arun',status:'APPROVED',outAt:'2026-10-05T08:00:00Z',returnAt:'2026-10-05T10:00:00Z'}});
+    assert.match(issuedPass,/ticket-qr/);assert.match(issuedPass,/Print \/ save PDF/);
+  } finally {await server.close();}
+});

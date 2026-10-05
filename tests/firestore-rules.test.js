@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 const project='demo-campuspass';
 const root=`http://${process.env.FIRESTORE_EMULATOR_HOST||'127.0.0.1:8080'}/v1/projects/${project}/databases/(default)/documents`;
-const field=value=>value===null?{nullValue:null}:Array.isArray(value)?{arrayValue:{values:value.map(field)}}:typeof value==='object'?{mapValue:{fields:fields(value)}}:typeof value==='boolean'?{booleanValue:value}:typeof value==='number'?{integerValue:String(value)}:{stringValue:value};
+const field=value=>value===null?{nullValue:null}:value instanceof Date?{timestampValue:value.toISOString()}:Array.isArray(value)?{arrayValue:{values:value.map(field)}}:typeof value==='object'?{mapValue:{fields:fields(value)}}:typeof value==='boolean'?{booleanValue:value}:typeof value==='number'?{integerValue:String(value)}:{stringValue:value};
 const fields=value=>Object.fromEntries(Object.entries(value).map(([k,v])=>[k,field(v)]));
 const token=uid=>[Buffer.from(JSON.stringify({alg:'none',typ:'JWT'})).toString('base64url'),Buffer.from(JSON.stringify({iss:`https://securetoken.google.com/${project}`,aud:project,sub:uid,user_id:uid,iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+3600,firebase:{sign_in_provider:'password'},email:`${uid}@example.test`})).toString('base64url'),''].join('.');
 async function write(path,data,actor='owner'){const response=await fetch(`${root}/${path}`,{method:'PATCH',headers:{Authorization:`Bearer ${actor==='owner'?'owner':token(actor)}`,'Content-Type':'application/json'},body:JSON.stringify({fields:fields(data)})});return {status:response.status,body:await response.text()};}
+async function register(uid,profile){const response=await fetch(root+':commit',{method:'POST',headers:{Authorization:`Bearer ${token(uid)}`,'Content-Type':'application/json'},body:JSON.stringify({writes:[{update:{name:`projects/${project}/databases/(default)/documents/users/${uid}`,fields:fields(profile)}},{update:{name:`projects/${project}/databases/(default)/documents/registerNumbers/${profile.registerNumber}`,fields:fields({uid,createdAt:new Date()})}}]})});return {status:response.status,body:await response.text()};}
 const approved={active:true,approvalStatus:'APPROVED'};
 for(const [uid,profile] of Object.entries({admin:{...approved,role:'Admin',displayName:'Admin'},advisor:{...approved,role:'Class Advisor',displayName:'Dr Advisor',department:'CSE'},inactive:{active:false,role:'HOD',displayName:'Inactive'},warden:{...approved,role:'Year Warden',displayName:'Warden',hostel:'Girls hostel'},principal:{...approved,role:'Principal',displayName:'Principal'},student:{...approved,role:'Student',displayName:'Student',department:'CSE',year:2,gender:'Female',section:'A'}}))assert.equal((await write(`users/${uid}`,profile)).status,200);
 const pass={studentId:'student',studentName:'Student',registerNumber:'REG1',department:'CSE',year:2,gender:'Female',section:'A',status:'PENDING_ADVISOR',approvals:[]};
@@ -29,3 +30,43 @@ let blockedRead=await fetch(`${root}/outpasses/one`,{headers:{Authorization:`Bea
 await write('accountLocks/student',{deleted:true});
 result=await write('users/student',{...disabledStudent,active:false,approvalStatus:'PENDING'},'student');assert.equal(result.status,403,result.body);
 console.log('Firestore checks passed: workflow, scope, archive, disabled access, deleted-account protection and admin protection.');
+
+const signup={displayName:'New Student',email:'newstudent@example.test',registerNumber:'NEW1',institution:'Engineering',department:'CSE',year:2,section:'A',gender:'Male',studentPhone:'9842012346',parentPhone:'9842012345',role:'Student',requestedRole:'Student',active:false,approvalStatus:'PENDING'};
+result=await register('newstudent',signup);assert.equal(result.status,200,result.body);
+result=await register('duplicate',{...signup,email:'duplicate@example.test'});assert.equal(result.status,403,result.body);
+result=await register('matching',{...signup,email:'matching@example.test',registerNumber:'MATCH',studentPhone:signup.parentPhone});assert.equal(result.status,403,result.body);
+result=await register('newhod',{...signup,email:'newhod@example.test',registerNumber:'HOD1',requestedRole:'HOD',year:null,section:'',studentPhone:'',parentPhone:'',phone:'9842012345'});assert.equal(result.status,200,result.body);
+
+const liveStudent={...signup,displayName:'New Student',active:true,approvalStatus:'APPROVED'};await write('users/newstudent',liveStudent);
+const futureOut=new Date(Date.now()+3600000),futureReturn=new Date(Date.now()+7200000);
+const futurePass={studentId:'newstudent',studentName:'New Student',registerNumber:'NEW1',institution:'Engineering',department:'CSE',year:2,gender:'Male',section:'A',studentPhone:'9842012346',parentPhone:'9842012345',reason:'Family visit',category:'OUTING',studentType:'HOSTELLER',permissionPolicy:'FULL_APPROVAL',responsibilityAccepted:true,outAt:futureOut.toISOString(),returnAt:futureReturn.toISOString(),outAtTimestamp:futureOut,returnAtTimestamp:futureReturn,status:'PENDING_ADVISOR',approvals:[]};
+result=await write('outpasses/future',futurePass,'newstudent');assert.equal(result.status,200,result.body);
+result=await write('outpasses/changed-institute',{...futurePass,institution:'Arts'},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('outpasses/matching-phone',{...futurePass,studentPhone:futurePass.parentPhone},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('outpasses/reversed-dates',{...futurePass,returnAtTimestamp:new Date(Date.now())},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('outpasses/emergency',{...futurePass,category:'EMERGENCY'},'newstudent');assert.equal(result.status,200,result.body);
+result=await write('outpasses/wrong-category',{...futurePass,category:'BYPASS'},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('outpasses/wrong-student-type',{...futurePass,studentType:'DAY_SCHOLAR'},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('outpasses/wrong-permission',{...futurePass,permissionPolicy:'SKIP_APPROVAL'},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('outpasses/no-declaration',{...futurePass,responsibilityAccepted:false},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('users/newstudent',{...liveStudent,studentType:'DAY_SCHOLAR'},'admin');assert.equal(result.status,200,result.body);
+result=await write('outpasses/day-scholar',{...futurePass,studentType:'DAY_SCHOLAR',category:'ON_DUTY'},'newstudent');assert.equal(result.status,200,result.body);
+
+await write('users/hod-all-years',{...approved,displayName:'HOD',role:'HOD',institution:'Engineering',department:'CSE',year:4,section:'Z'});
+const hodPass={...futurePass,status:'PENDING_HOD'};await write('outpasses/hod-scope',hodPass);
+result=await write('outpasses/hod-scope',{...hodPass,status:'PENDING_PRINCIPAL',approvals:[{role:'HOD',approverId:'hod-all-years',name:'HOD',decision:'APPROVED',remarks:'',at:'2026-10-05'}]},'hod-all-years');assert.equal(result.status,200,result.body);
+await write('users/institute-principal',{...approved,displayName:'Principal',role:'Principal',institution:'Arts'});
+await write('outpasses/institute-scope',principalPass);
+result=await write('outpasses/institute-scope',{...principalPass,status:'PENDING_WARDEN',hostel:'Girls hostel',approvals:[entry,{...principalEntry,approverId:'institute-principal'}]},'institute-principal');assert.equal(result.status,403,result.body);
+
+const session={sessionId:'first-device-session-0123456789',expiresAt:new Date(Date.now()+90000)};
+result=await write('portalSessions/newstudent',session,'newstudent');assert.equal(result.status,200,result.body);
+result=await write('portalSessions/newstudent',{...session,sessionId:'second-device-session-0123456789'},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('portalSessions/newstudent',{...session,expiresAt:new Date(Date.now()+90000)},'newstudent');assert.equal(result.status,200,result.body);
+await write('portalSessions/newstudent',{...session,expiresAt:new Date(Date.now()-1000)});
+result=await write('portalSessions/newstudent',{...session,sessionId:'second-device-session-0123456789',expiresAt:new Date(Date.now()+90000)},'newstudent');assert.equal(result.status,200,result.body);
+
+await write('users/security',{...approved,role:'Security',displayName:'Gate officer'});
+await write('outpasses/locked-exit',{...futurePass,status:'APPROVED'});
+result=await write('outpasses/locked-exit',{...futurePass,status:'CURRENTLY_OUT'},'security');assert.equal(result.status,403,result.body);
+console.log('Document update checks passed: registration uniqueness, contacts, locked profiles, role scope, session leases and mandatory server gate validation.');
