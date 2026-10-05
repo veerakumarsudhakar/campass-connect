@@ -5,7 +5,7 @@ import { contactError, formatDateTime, gateError, profileForRole, profileError, 
 import { filterRequests, matchesScope } from '../src/portal-filters.js';
 import { parseStudentCsv } from '../src/student-import.js';
 import { approvalRoute, categoryOf, studentTypeOf, outpassClassificationError, permissionProgress } from '../functions/outpass-policy.js';
-import { SCIENCE_AND_HUMANITIES, canonicalDepartment, normalizeCatalog } from '../functions/academic-policy.js';
+import { SCIENCE_AND_HUMANITIES, canonicalDepartment, formatSections, normalizeCatalog, sectionSpan } from '../functions/academic-policy.js';
 
 test('S&H covers first-year Engineering across majors and respects institution and advisor section',()=>{
   const staff={role:'Class Advisor',institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:SCIENCE_AND_HUMANITIES,section:'A',phone:'9842012345'};
@@ -17,14 +17,27 @@ test('S&H covers first-year Engineering across majors and respects institution a
   assert.equal(matchesScope({...pass,section:'B'},staff),false);
   assert.equal(matchesScope({...pass,institution:'ARTS'},staff),false);
   assert.equal(matchesScope({...pass,section:'B'},{...staff,section:''}),true);
-  assert.equal(matchesScope({...pass,section:'B'},{...staff,role:'HOD'}),true);
+  assert.equal(matchesScope({...pass,section:'B'},{...staff,role:'HOD'}),false);
   assert.match(profileError({...staff,institution:'Arts'},staff.role),/Engineering/);
   const alias={role:'HOD',institution:'study world college of engineering',department:'s&h',phone:'9842012345'};
   assert.equal(profileError(alias,alias.role),'');
   assert.equal(profileForRole(alias,alias.role).department,SCIENCE_AND_HUMANITIES);
   assert.equal(profileForRole(alias,alias.role).year,1);
   assert.equal(matchesScope({institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:'MECHNICAL ENGINEERING',year:1,section:'C'},alias),false);
-  assert.equal(matchesScope({institution:alias.institution,department:'MECHNICAL ENGINEERING',year:1,section:'C'},alias),true);
+  assert.equal(matchesScope({institution:alias.institution,department:'MECHNICAL ENGINEERING',year:1,section:'C'},alias),false);
+  const letters=['A','B','C','D','E','F','G'];
+  const firstRange=sectionSpan('A','F',letters), secondRange=sectionSpan('G','F',letters);
+  assert.deepEqual(firstRange,['A','B','C','D','E','F']);
+  assert.deepEqual(secondRange,['F','G']);
+  assert.equal(formatSections(firstRange),'A–F');
+  const hodA={...alias,sections:firstRange}, hodB={...alias,sections:secondRange};
+  const yearOne={institution:alias.institution,department:'MECHNICAL ENGINEERING',year:1};
+  assert.equal(matchesScope({...yearOne,section:'B'},hodA),true);
+  assert.equal(matchesScope({...yearOne,section:'B'},hodB),false);
+  assert.equal(matchesScope({...yearOne,section:'F'},hodA),true);
+  assert.equal(matchesScope({...yearOne,section:'F'},hodB),true);
+  assert.equal(matchesScope({...yearOne,section:'G'},hodA),false);
+  assert.equal(matchesScope({...yearOne,section:'G'},hodB),true);
   assert.equal(matchesScope({institution:alias.institution,department:'MECHNICAL ENGINEERING',year:2,section:'C'},alias),false);
   assert.equal(matchesScope({institution:'STUDY WORLD COLLEGE OF ARTS AND SCIENCE',department:'CSE',year:1,section:'A'},{...alias,institution:'STUDY WORLD COLLEGE OF ARTS AND SCIENCE'}),false);
   const student={role:'Student',institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:'s&h',year:2,section:'A',gender:'Female',studentPhone:'9842012346',parentPhone:'9842012345',studentType:'HOSTELLER'};
@@ -83,7 +96,11 @@ test('scope follows role: HOD all years, Principal one institute, hostel teams i
   assert.equal(matchesScope(pass,{role:ROLES.PRINCIPAL,institution:'Engineering',department:'EEE',year:4}),true);
   assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:'Boys hostel',year:2,department:'EEE'}),true);
   assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:'Boys hostel',year:3}),true);
+  assert.equal(matchesScope({...pass,gender:'Female',hostel:'Boys hostel'},{role:ROLES.WARDEN,hostel:'Boys hostel'}),false);
+  assert.equal(matchesScope({...pass,gender:'Female'},{role:ROLES.WARDEN,hostel:'Girls hostel'}),true);
+  assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:''}),false);
   assert.equal(matchesScope(pass,{role:ROLES.COUNCILLOR,hostel:'Boys hostel',year:4,department:'EEE'}),true);
+  assert.equal(matchesScope({...pass,gender:'Female'},{role:ROLES.COUNCILLOR,hostel:'Boys hostel'}),false);
 });
 
 test('gate rejects early, expired and invalid exits; overdue students can return', () => {

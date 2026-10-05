@@ -1,5 +1,5 @@
 export const ROLES = { STUDENT: 'Student', ADVISOR: 'Class Advisor', HOD: 'HOD', PRINCIPAL: 'Principal', WARDEN: 'Year Warden', COUNCILLOR: 'Resident Councillor', SECURITY: 'Security', ADMIN: 'Admin' };
-import { canonicalDepartment, isCommonFirstYear, isEngineering, isScienceAndHumanities } from './academic-policy.js';
+import { canonicalDepartment, isCommonFirstYear, isEngineering, isScienceAndHumanities, normalizeSections } from './academic-policy.js';
 import { STUDENT_TYPES, studentTypeOf } from './outpass-policy.js';
 
 export function roleFields(role) {
@@ -29,7 +29,8 @@ export function profileForRole(form, role) {
     institution: fields.institution ? form.institution || '' : '',
     department: fields.department ? canonicalDepartment(form.department) : '',
     year: isCommonFirstYear({...form,role}) ? 1 : fields.year ? Number(form.year) || null : null,
-    section: fields.section ? String(form.section || '').trim() : '',
+    section: fields.section ? String(form.section || '').trim().toUpperCase() : '',
+    sections: role === ROLES.HOD && isCommonFirstYear({...form,role}) ? normalizeSections(form.sections) : [],
     hostel: fields.hostel ? form.hostel || '' : '',
     position: fields.position ? String(form.position || '').trim() : '',
     gender: role === ROLES.STUDENT ? form.gender || '' : '',

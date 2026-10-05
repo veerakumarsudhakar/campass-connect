@@ -27,21 +27,46 @@ export function normalizeCatalog(catalog) {
     sections: unique((Array.isArray(catalog?.sections) ? catalog.sections : []).map(value => String(value || '').trim().toUpperCase()), value => value),
   };
 }
+export function normalizeSections(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(',');
+  return [...new Set(list.map(item => String(item || '').trim().toUpperCase()).filter(Boolean))].slice(0, 50);
+}
+export function sectionSpan(from, to, available) {
+  const sections = normalizeSections(available);
+  const start = sections.indexOf(String(from || '').trim().toUpperCase());
+  const end = sections.indexOf(String(to || '').trim().toUpperCase());
+  if (start < 0 || end < 0) return [];
+  const [first, last] = start <= end ? [start, end] : [end, start];
+  return sections.slice(first, last + 1);
+}
+export function formatSections(value) {
+  const list = normalizeSections(value);
+  if (!list.length) return 'No sections assigned';
+  const letters = list.every(item => /^[A-Z]$/.test(item));
+  const codes = list.map(item => item.charCodeAt(0));
+  if (letters && list.length > 1 && codes.every((code, index) => index === 0 || code === codes[index - 1] + 1)) return `${list[0]}–${list.at(-1)}`;
+  return list.join(', ');
+}
 export function withCommonFirstYear(catalog) {
   const normalized = normalizeCatalog(catalog);
   return { ...normalized, institutions: normalized.institutions.map(item => isEngineering(item.name) && !item.departments.some(isScienceAndHumanities) ? { ...item, departments: [...item.departments, SCIENCE_AND_HUMANITIES] } : item) };
 }
 
+const coverageGender = user => user.hostel === 'Boys hostel' ? 'Male' : user.hostel === 'Girls hostel' ? 'Female' : '';
+const requestGender = record => record.gender === 'Male' || record.gender === 'Female' ? record.gender : record.hostel === 'Boys hostel' ? 'Male' : record.hostel === 'Girls hostel' ? 'Female' : '';
 export function matchesStaffScope(record, user) {
   const role=user.role, common=isCommonFirstYear(user);
   const institution=!role || ['Class Advisor','HOD','Principal'].includes(role);
   const department=!role || ['Class Advisor','HOD'].includes(role);
   const year=!role || role === 'Class Advisor';
-  const hostel=!role || ['Year Warden','Resident Councillor'].includes(role);
-  const hostelName=record.hostel || (record.gender==='Male'?'Boys hostel':record.gender==='Female'?'Girls hostel':'Hostel assignment required');
+  const hostelRole=!role||role==='Year Warden'||role==='Resident Councillor';
+  const hostelName=record.hostel||(record.gender==='Male'?'Boys hostel':record.gender==='Female'?'Girls hostel':'Hostel assignment required');
+  const assigned=normalizeSections(user.sections);
+  const genderMatch=role?coverageGender(user)!==''&&requestGender(record)===coverageGender(user):!user.hostel||hostelName===user.hostel;
   return (!institution || !user.institution || record.institution===user.institution)
     && (common ? isEngineering(user.institution) && isEngineering(record.institution) && Number(record.year)===1 : !department || !user.department || record.department===user.department)
     && (common || !year || !user.year || Number(record.year)===Number(user.year))
-    && (role!=='Class Advisor' || !user.section || record.section===user.section)
-    && (!hostel || !user.hostel || hostelName===user.hostel);
+    && (role!=='Class Advisor' || !user.section || String(record.section||'').toUpperCase()===String(user.section).toUpperCase())
+    && (!(common && role==='HOD') || assigned.includes(String(record.section||'').trim().toUpperCase()))
+    && (!hostelRole || genderMatch);
 }

@@ -33,7 +33,13 @@ service cloud.firestore {
         && (!(role == 'Student' && isShDepartment(data.get('department', ''))) || (isEngineeringName(data.get('institution', '')) && data.get('year', 0) == 1))
         && (role != 'Admin' || data.get('position', '').size() > 0)
         && (role == 'Student' ? validContacts(data) && data.get('gender', '') in ['Male','Female','Other']
-          && data.get('studentType', 'HOSTELLER') in ['HOSTELLER','DAY_SCHOLAR'] : data.get('phone', '').matches('^[6-9][0-9]{9}$'));
+          && data.get('studentType', 'HOSTELLER') in ['HOSTELLER','DAY_SCHOLAR'] : data.get('phone', '').matches('^[6-9][0-9]{9}$'))
+        && data.get('sections', []) is list && data.get('sections', []).size() <= 50;
+    }
+    function requestGender() {
+      return resource.data.get('gender', '') in ['Male','Female'] ? resource.data.gender
+        : resource.data.get('hostel', '') == 'Boys hostel' ? 'Male'
+        : resource.data.get('hostel', '') == 'Girls hostel' ? 'Female' : '';
     }
     function commonFirstYear() {
       return me().role in ['Class Advisor','HOD'] && isShDepartment(me().get('department', ''));
@@ -44,8 +50,8 @@ service cloud.firestore {
         && (commonFirstYear() ? resource.data.year == 1 && isEngineeringName(resource.data.get('institution', '')) : (!(me().role in ['Class Advisor','HOD']) || me().get('department', '') == '' || me().department == resource.data.department))
         && (commonFirstYear() || me().role != 'Class Advisor' || me().get('year', 0) == 0 || me().get('year', null) == null || me().year == resource.data.year)
         && (me().role != 'Class Advisor' || me().get('section', '') == '' || me().section == resource.data.get('section', ''))
-        && (!(me().role in ['Year Warden','Resident Councillor']) || me().get('hostel', '') == '' || me().hostel == resource.data.get('hostel',
-          resource.data.get('gender', '') == 'Male' ? 'Boys hostel' : resource.data.get('gender', '') == 'Female' ? 'Girls hostel' : 'Hostel assignment required')));
+        && (!(commonFirstYear() && me().role == 'HOD') || me().get('sections', []).hasAny([resource.data.get('section', '')]))
+        && (!(me().role in ['Year Warden','Resident Councillor']) || (me().hostel == 'Boys hostel' && requestGender() == 'Male') || (me().hostel == 'Girls hostel' && requestGender() == 'Female')));
     }
     function ownsQueue() {
       return (me().role == 'Class Advisor' && resource.data.status == 'PENDING_ADVISOR')
@@ -84,7 +90,7 @@ service cloud.firestore {
     function validAdminEdit(userId) {
       let data = request.resource.data;
       return resource.data.get('deletionPending', false) == false && resource.data.get('accountOperation', null) == null
-        && data.diff(resource.data).affectedKeys().hasOnly(['displayName','registerNumber','institution','department','year','section','hostel','position','gender','studentType','studentPhone','parentPhone','phone','role','requestedRole','photoUrl','approvalStatus','active','disabled','deleted','reviewedAt','updatedBy'])
+        && data.diff(resource.data).affectedKeys().hasOnly(['displayName','registerNumber','institution','department','year','section','sections','hostel','position','gender','studentType','studentPhone','parentPhone','phone','role','requestedRole','photoUrl','approvalStatus','active','disabled','deleted','reviewedAt','updatedBy'])
         && validProfile(data) && data.role == data.requestedRole
         && data.approvalStatus in ['PENDING','APPROVED','REJECTED','REMOVED']
         && data.disabled is bool && data.active == (data.approvalStatus == 'APPROVED' && data.disabled == false)

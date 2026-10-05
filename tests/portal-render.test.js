@@ -36,6 +36,7 @@ test('portal markup presents the document-requested fields and separate admin ov
     const admin=await server.ssrLoadModule('/src/AdminWorkspace.jsx');
     const science=render(admin.ScienceCoverage,{users:[{uid:'sh',displayName:'Dr. Meera',email:'meera@example.test',registerNumber:'SH1',role:'Class Advisor',department:'SCIENCE AND HUMANITIES (S&H)',institution:'STUDY WORLD COLLEGE OF ENGINEERING',section:'A',approvalStatus:'APPROVED'}],currentUser:{uid:'admin'},demo:true,notify:()=>{}});
     assert.match(science,/common first year/);assert.match(science,/Year 2 and above/);assert.match(science,/Dr. Meera/);assert.match(science,/Edit role/);
+    assert.match(science,/From section/);assert.match(science,/Assign section range/);assert.match(science,/S&amp;H HOD/);
     const createUser=render(admin.UserEditor,{currentUser:{uid:'admin'},demo:true,notify:()=>{}});
     assert.match(createUser,/Create a new user/);assert.match(createUser,/Temporary password/);assert.match(createUser,/Student type/);
     const editUser=render(admin.UserEditor,{person:{uid:'student',email:'student@example.test',role:'Student',approvalStatus:'APPROVED'},currentUser:{uid:'admin'},demo:true,notify:()=>{},close:()=>{}});
