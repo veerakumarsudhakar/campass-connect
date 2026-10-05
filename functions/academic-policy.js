@@ -27,12 +27,16 @@ export function normalizeCatalog(catalog) {
     sections: unique((Array.isArray(catalog?.sections) ? catalog.sections : []).map(value => String(value || '').trim().toUpperCase()), value => value),
   };
 }
+export function withCommonFirstYear(catalog) {
+  const normalized = normalizeCatalog(catalog);
+  return { ...normalized, institutions: normalized.institutions.map(item => isEngineering(item.name) && !item.departments.some(isScienceAndHumanities) ? { ...item, departments: [...item.departments, SCIENCE_AND_HUMANITIES] } : item) };
+}
 
 export function matchesStaffScope(record, user) {
   const role=user.role, common=isCommonFirstYear(user);
   const institution=!role || ['Class Advisor','HOD','Principal'].includes(role);
   const department=!role || ['Class Advisor','HOD'].includes(role);
-  const year=!role || ['Class Advisor','Year Warden'].includes(role);
+  const year=!role || role === 'Class Advisor';
   const hostel=!role || ['Year Warden','Resident Councillor'].includes(role);
   const hostelName=record.hostel || (record.gender==='Male'?'Boys hostel':record.gender==='Female'?'Girls hostel':'Hostel assignment required');
   return (!institution || !user.institution || record.institution===user.institution)

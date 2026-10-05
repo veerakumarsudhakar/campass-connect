@@ -112,7 +112,7 @@ export const processDecision=onCall(async req=>{
   await db.runTransaction(async tx=>{
     const s=await tx.get(ref);if(!s.exists)throw new HttpsError('not-found','Outpass not found.');
     const pass=s.data(),step=transitions[pass.status];if(pass.archived||!step||step.role!==u.role||!inScope(pass,u))throw new HttpsError('permission-denied','You cannot decide on this request at its current stage.');
-    const next=decision==='REJECTED'?'REJECTED':step.next,decidedAt=new Date(),comment=clean(remarks,600);
+    const next=decision==='REJECTED'?'REJECTED':(pass.status==='PENDING_HOD'&&studentTypeOf(pass)==='DAY_SCHOLAR'?'APPROVED':step.next),decidedAt=new Date(),comment=clean(remarks,600);
     const entry={role:u.role,approverId:u.id,decision,name:u.displayName||'',at:decidedAt,remarks:comment},updates={status:next,approvals:[...(pass.approvals||[]),entry],updatedAt:FieldValue.serverTimestamp()};
     if(u.role===roles.PRINCIPAL&&decision==='APPROVED')updates.hostel=pass.gender==='Male'?'Boys hostel':pass.gender==='Female'?'Girls hostel':'Hostel assignment required';
     if(next==='APPROVED')updates.passNumber='PASS-'+outpassId.slice(0,8).toUpperCase();

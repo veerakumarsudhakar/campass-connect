@@ -19,3 +19,8 @@ export function hostelForGender(gender) {
   return gender === 'Male' ? 'Boys hostel' : gender === 'Female' ? 'Girls hostel' : 'Hostel assignment required';
 }
 export { matchesStaffScope as matchesScope } from '../functions/academic-policy.js';
+export function listGrouping(role) {
+  if (role === 'HOD' || role === 'Resident Councillor') return 'year';
+  if (role === 'Principal' || role === 'Year Warden') return 'department';
+  return '';
+}

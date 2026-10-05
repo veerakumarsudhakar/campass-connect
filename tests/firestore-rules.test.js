@@ -113,3 +113,14 @@ result=await write('outpasses/sh-hod',{...shHodPass,status:'PENDING_PRINCIPAL',a
 const hodYearTwo={...shHodPass,year:2};await write('outpasses/sh-hod-year2',hodYearTwo);
 result=await write('outpasses/sh-hod-year2',{...hodYearTwo,status:'PENDING_PRINCIPAL',approvals:[hodEntry]},'sh-hod');assert.equal(result.status,403,result.body);
 console.log('Admin edit checks passed: self-lockout, duplicate IDs, and S&H coverage limited to first-year Engineering.');
+const dayPass={...futurePass,studentType:'DAY_SCHOLAR',status:'PENDING_HOD'};await write('outpasses/day-hod',dayPass);
+const dayHod={role:'HOD',approverId:'hod-all-years',name:'HOD',decision:'APPROVED',remarks:'',at:'2026-10-05'};
+result=await write('outpasses/day-hod',{...dayPass,status:'APPROVED',passNumber:'PASS-DAYHOD',approvals:[dayHod]},'hod-all-years');assert.equal(result.status,200,result.body);
+const hostellerHod={...futurePass,status:'PENDING_HOD'};await write('outpasses/hosteller-hod',hostellerHod);
+result=await write('outpasses/hosteller-hod',{...hostellerHod,status:'APPROVED',passNumber:'PASS-HOSTEL',approvals:[dayHod]},'hod-all-years');assert.equal(result.status,403,result.body);
+const holidayPass={...futurePass,category:'HOLIDAY',studentType:'DAY_SCHOLAR'};
+result=await write('outpasses/holiday',holidayPass,'newstudent');assert.equal(result.status,200,result.body);
+const lateWarden={...futurePass,status:'PENDING_WARDEN',year:4,gender:'Female',hostel:'Girls hostel'};await write('outpasses/warden-year',lateWarden);
+const wardenEntry={role:'Year Warden',approverId:'warden',name:'Warden',decision:'APPROVED',remarks:'',at:'2026-10-05'};
+result=await write('outpasses/warden-year',{...lateWarden,status:'PENDING_COUNCILLOR',approvals:[wardenEntry]},'warden');assert.equal(result.status,200,result.body);
+console.log('Workflow changes passed: day-scholar outpass at HOD, holiday category, and warden coverage across years.');

@@ -26,7 +26,7 @@ service cloud.firestore {
         && data.get('registerNumber', '').matches('^[A-Z0-9_-]+$') && data.get('registerNumber', '').size() <= 40
         && (!(role in ['Student','Class Advisor','HOD','Principal']) || data.get('institution', '').size() > 0)
         && (!(role in ['Student','Class Advisor','HOD']) || data.get('department', '').size() > 0)
-        && (!(role in ['Student','Class Advisor','Year Warden']) || (common || data.get('year', 0) in [1,2,3,4,5,6,7,8]))
+        && (!(role in ['Student','Class Advisor']) || (common || data.get('year', 0) in [1,2,3,4,5,6,7,8]))
         && (!(role in ['Student','Class Advisor']) || common || data.get('section', '').size() > 0)
         && (!(role in ['Year Warden','Resident Councillor']) || data.get('hostel', '') in ['Boys hostel','Girls hostel'])
         && (!common || (isEngineeringName(data.get('institution', '')) && data.get('year', 0) == 1))
@@ -42,7 +42,7 @@ service cloud.firestore {
       return me().role == 'Security'
         || ((!(me().role in ['Class Advisor','HOD','Principal']) || me().get('institution', '') == '' || me().institution == resource.data.get('institution', ''))
         && (commonFirstYear() ? resource.data.year == 1 && isEngineeringName(resource.data.get('institution', '')) : (!(me().role in ['Class Advisor','HOD']) || me().get('department', '') == '' || me().department == resource.data.department))
-        && (commonFirstYear() || !(me().role in ['Class Advisor','Year Warden']) || me().get('year', 0) == 0 || me().get('year', null) == null || me().year == resource.data.year)
+        && (commonFirstYear() || me().role != 'Class Advisor' || me().get('year', 0) == 0 || me().get('year', null) == null || me().year == resource.data.year)
         && (me().role != 'Class Advisor' || me().get('section', '') == '' || me().section == resource.data.get('section', ''))
         && (!(me().role in ['Year Warden','Resident Councillor']) || me().get('hostel', '') == '' || me().hostel == resource.data.get('hostel',
           resource.data.get('gender', '') == 'Male' ? 'Boys hostel' : resource.data.get('gender', '') == 'Female' ? 'Girls hostel' : 'Hostel assignment required')));
@@ -147,7 +147,7 @@ service cloud.firestore {
         && request.resource.data.get('gender', '') == me().get('gender', '')
         && request.resource.data.get('section', '') == me().get('section', '')
         && request.resource.data.get('archived', false) == false
-        && request.resource.data.get('category', 'OUTING') in ['OUTING','EMERGENCY','ON_DUTY']
+        && request.resource.data.get('category', 'OUTING') in ['OUTING','EMERGENCY','ON_DUTY','HOLIDAY','LEAVE']
         && request.resource.data.get('studentType', 'HOSTELLER') == me().get('studentType', 'HOSTELLER')
         && request.resource.data.get('permissionPolicy', 'FULL_APPROVAL') == 'FULL_APPROVAL'
         && request.resource.data.get('responsibilityAccepted', false) == true
@@ -161,6 +161,7 @@ service cloud.firestore {
         && (validOutpassTransition() || (ownsQueue()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived','archivedBy','updatedAt'])
           && request.resource.data.archived == true && request.resource.data.archivedBy == request.auth.uid));
+      allow update: if isAdmin() && adminCorrection();
       allow delete: if false;
       match /{document=**} {
         allow read: if hasAccess()
@@ -180,10 +181,27 @@ service cloud.firestore {
         && me().role != 'Security'
         && validApproval(next)
         && ((me().role == 'Class Advisor' && old == 'PENDING_ADVISOR' && (next == 'PENDING_HOD' || next == 'REJECTED'))
-        || (me().role == 'HOD' && old == 'PENDING_HOD' && (next == 'PENDING_PRINCIPAL' || next == 'REJECTED'))
+        || (me().role == 'HOD' && old == 'PENDING_HOD' && (next == 'REJECTED'
+          || (next == 'PENDING_PRINCIPAL' && resource.data.get('studentType', 'HOSTELLER') != 'DAY_SCHOLAR')
+          || (next == 'APPROVED' && resource.data.get('studentType', 'HOSTELLER') == 'DAY_SCHOLAR'
+            && request.resource.data.passNumber is string && request.resource.data.passNumber.size() > 0)))
         || (me().role == 'Principal' && old == 'PENDING_PRINCIPAL' && (next == 'PENDING_WARDEN' || next == 'REJECTED'))
         || (me().role == 'Year Warden' && old == 'PENDING_WARDEN' && (next == 'PENDING_COUNCILLOR' || next == 'REJECTED'))
         || (me().role == 'Resident Councillor' && old == 'PENDING_COUNCILLOR' && (next == 'APPROVED' || next == 'REJECTED')));
+    }
+
+    function adminCorrection() {
+      let data = request.resource.data;
+      let changed = data.diff(resource.data).affectedKeys();
+      return resource.data.status.matches('PENDING_.*')
+        && data.status == resource.data.status
+        && changed.hasOnly(['category','reason','studentPhone','parentPhone','outAt','returnAt','outAtTimestamp','returnAtTimestamp','updatedAt','updatedBy'])
+        && data.category in ['OUTING','EMERGENCY','ON_DUTY','HOLIDAY','LEAVE']
+        && data.reason is string && data.reason.size() > 0 && data.reason.size() <= 600
+        && validContacts(data)
+        && data.outAtTimestamp is timestamp && data.returnAtTimestamp is timestamp
+        && data.returnAtTimestamp > data.outAtTimestamp
+        && data.updatedBy == request.auth.uid;
     }
 
     function validApproval(next) {

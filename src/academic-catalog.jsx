@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { SCIENCE_AND_HUMANITIES } from '../functions/academic-policy.js';
+import { SCIENCE_AND_HUMANITIES, withCommonFirstYear } from '../functions/academic-policy.js';
 
 export const DEFAULT_CATALOG = {
   institutions: [
@@ -29,7 +29,7 @@ export function validateCatalog(catalog) {
 const Context=createContext({catalog:DEFAULT_CATALOG,error:'',setCatalog:()=>{}});
 export function AcademicCatalogProvider({children}) {
   const [catalog,setCatalog]=useState(DEFAULT_CATALOG),[error,setError]=useState('');
-  useEffect(()=>{if(!db)return;return onSnapshot(doc(db,'settings','academic'),snap=>{if(snap.exists()){const data=snap.data();const invalid=validateCatalog(data);if(invalid){setError(invalid);return;}setCatalog({institutions:data.institutions,years:data.years,sections:data.sections});}setError('');},()=>setError('Academic settings could not be loaded. The default options are available.'));},[]);
+  useEffect(()=>{if(!db)return;return onSnapshot(doc(db,'settings','academic'),snap=>{if(snap.exists()){const data=snap.data();const invalid=validateCatalog(data);if(invalid){setError(invalid);return;}setCatalog(withCommonFirstYear(data));}setError('');},()=>setError('Academic settings could not be loaded. The default options are available.'));},[]);
   return <Context.Provider value={{catalog,error,setCatalog}}>{children}</Context.Provider>;
 }
 export const useAcademicCatalog=()=>useContext(Context);

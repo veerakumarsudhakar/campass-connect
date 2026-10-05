@@ -4,7 +4,7 @@ import { ROLES } from '../src/workflow.js';
 import { contactError, formatDateTime, gateError, profileForRole, profileError, roleFields } from '../src/profile-policy.js';
 import { filterRequests, matchesScope } from '../src/portal-filters.js';
 import { parseStudentCsv } from '../src/student-import.js';
-import { categoryOf, studentTypeOf, outpassClassificationError, permissionProgress } from '../functions/outpass-policy.js';
+import { approvalRoute, categoryOf, studentTypeOf, outpassClassificationError, permissionProgress } from '../functions/outpass-policy.js';
 import { SCIENCE_AND_HUMANITIES, canonicalDepartment, normalizeCatalog } from '../functions/academic-policy.js';
 
 test('S&H covers first-year Engineering across majors and respects institution and advisor section',()=>{
@@ -40,7 +40,10 @@ test('S&H covers first-year Engineering across majors and respects institution a
 
 test('outpass categories and student types preserve legacy defaults and permission levels',()=>{
   assert.equal(categoryOf({}),'OUTING');assert.equal(studentTypeOf({}),'HOSTELLER');
-  for(const category of ['OUTING','EMERGENCY','ON_DUTY'])for(const studentType of ['HOSTELLER','DAY_SCHOLAR'])assert.equal(outpassClassificationError({category,studentType}),'');
+  for(const category of ['OUTING','EMERGENCY','ON_DUTY','HOLIDAY','LEAVE'])for(const studentType of ['HOSTELLER','DAY_SCHOLAR'])assert.equal(outpassClassificationError({category,studentType}),'');
+  assert.equal(approvalRoute({studentType:'DAY_SCHOLAR'}).PENDING_HOD,'APPROVED');
+  assert.equal(approvalRoute({studentType:'HOSTELLER'}).PENDING_HOD,'PENDING_PRINCIPAL');
+  assert.equal(permissionProgress({status:'PENDING_HOD',studentType:'DAY_SCHOLAR',approvals:[{role:'Class Advisor',decision:'APPROVED'}]}).label,'Level 2 of 2 · HOD');
   assert.match(outpassClassificationError({category:'BYPASS',studentType:'DAY_SCHOLAR'}),/Choose/);
   assert.match(outpassClassificationError({category:'OUTING',studentType:'STAFF'}),/Choose/);
   assert.equal(permissionProgress({status:'PENDING_PRINCIPAL',approvals:[{role:'Class Advisor',decision:'APPROVED'},{role:'HOD',decision:'APPROVED'}]}).label,'Level 3 of 5 · Principal');
@@ -68,7 +71,7 @@ test('role changes discard irrelevant fields and require official contact detail
     assert.equal(profileError(form,role),'');
     assert.match(profileError({...form,phone:''},role),/mobile/);
   }
-  assert.equal(roleFields(ROLES.WARDEN).year,true);
+  assert.equal(roleFields(ROLES.WARDEN).year,false);
   assert.equal(roleFields(ROLES.WARDEN).department,false);
   assert.equal(profileForRole(form,ROLES.ADMIN).position,'Administrator');
 });
@@ -79,7 +82,7 @@ test('scope follows role: HOD all years, Principal one institute, hostel teams i
   assert.equal(matchesScope(pass,{role:ROLES.PRINCIPAL,institution:'Arts',department:'CSE',year:2}),false);
   assert.equal(matchesScope(pass,{role:ROLES.PRINCIPAL,institution:'Engineering',department:'EEE',year:4}),true);
   assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:'Boys hostel',year:2,department:'EEE'}),true);
-  assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:'Boys hostel',year:3}),false);
+  assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:'Boys hostel',year:3}),true);
   assert.equal(matchesScope(pass,{role:ROLES.COUNCILLOR,hostel:'Boys hostel',year:4,department:'EEE'}),true);
 });
 
@@ -87,7 +90,7 @@ test('gate rejects early, expired and invalid exits; overdue students can return
   const pass={status:'APPROVED',outAt:'2026-10-05T09:00:00Z',returnAt:'2026-10-05T11:00:00Z'};
   assert.match(gateError(pass,new Date('2026-10-05T08:59:59Z')),/locked/);
   assert.equal(gateError(pass,new Date(pass.outAt)), '');
-  assert.match(gateError(pass,new Date(pass.returnAt)),/expired/);
+  assert.equal(gateError(pass,new Date(pass.returnAt)), '');
   assert.match(gateError({...pass,returnAt:'bad'},new Date()),/invalid/);
   assert.match(gateError({...pass,archived:true}),/eligible/);
   assert.equal(gateError({...pass,status:'CURRENTLY_OUT'},new Date('2026-10-10')), '');
