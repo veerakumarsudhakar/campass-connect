@@ -7,6 +7,10 @@ service cloud.firestore {
     function hasAccess() { return signedIn() && me().active == true && me().get('disabled', false) == false && me().get('deletionPending', false) == false; }
     function isStaff() { return hasAccess() && me().role != 'Student'; }
     function isAdmin() { return isStaff() && me().role == 'Admin'; }
+    function needsFirstAdmin() {
+      return exists(/databases/$(database)/documents/settings/access)
+        && get(/databases/$(database)/documents/settings/access).data.needsAdmin == true;
+    }
     function userPurged(userId) {
       return existsAfter(/databases/$(database)/documents/accountLocks/$(userId))
         && getAfter(/databases/$(database)/documents/accountLocks/$(userId)).data.deleted == true
@@ -67,6 +71,13 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      allow create: if signedIn() && needsFirstAdmin() && userId == request.auth.uid
+        && request.resource.data.role == 'Admin' && request.resource.data.requestedRole == 'Admin'
+        && request.resource.data.active == true && request.resource.data.approvalStatus == 'APPROVED'
+        && request.resource.data.email == request.auth.token.email
+        && validProfile(request.resource.data)
+        && getAfter(/databases/$(database)/documents/settings/access).data.needsAdmin == false
+        && getAfter(/databases/$(database)/documents/registerNumbers/$(request.resource.data.registerNumber)).data.uid == userId;
       allow create: if (signedIn() && userId == request.auth.uid
         && request.resource.data.role == 'Student'
         && request.resource.data.active == false
@@ -240,6 +251,16 @@ service cloud.firestore {
         && (next != 'REJECTED' || entry.remarks.size() > 0);
     }
 
+    match /settings/access {
+      allow read: if signedIn();
+      allow create: if false;
+      allow update: if signedIn() && needsFirstAdmin()
+        && request.resource.data.needsAdmin == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['needsAdmin'])
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin'
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+      allow delete: if false;
+    }
     match /settings/academic {
       allow read: if true;
       allow create, update: if isAdmin()

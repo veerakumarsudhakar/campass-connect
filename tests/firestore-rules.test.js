@@ -159,3 +159,8 @@ result=await commit('admin',[
 ]);assert.equal(result.status,200,result.body);
 result=await register('purge-student',{...signup,email:'purged@example.test',registerNumber:'PURGE2'});assert.equal(result.status,403,result.body);
 console.log('Permanent account deletion passed: profile, access, register number, and outpasses.');
+await write('settings/access',{needsAdmin:true});
+const firstAdmin={displayName:'Campus Admin',email:'campus-admin@example.test',registerNumber:'ADMINBOOT',role:'Admin',requestedRole:'Admin',active:true,approvalStatus:'APPROVED',position:'Registrar',phone:'9842012345',institution:'',department:'',year:null,section:'',sections:[],hostel:'',gender:'',studentType:'',studentPhone:'',parentPhone:'',photoUrl:'',disabled:false,deleted:false};
+result=await commit('campus-admin',[update('users/campus-admin',firstAdmin),update('registerNumbers/ADMINBOOT',{uid:'campus-admin',createdAt:new Date()}),update('settings/access',{needsAdmin:false})]);assert.equal(result.status,200,result.body);
+result=await commit('second-admin',[update('users/second-admin',{...firstAdmin,email:'second-admin@example.test',registerNumber:'ADMINBOOT2'}),update('registerNumbers/ADMINBOOT2',{uid:'second-admin',createdAt:new Date()}),update('settings/access',{needsAdmin:false})]);assert.equal(result.status,403,result.body);
+console.log('First administrator bootstrap passed.');
