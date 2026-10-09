@@ -25,19 +25,35 @@ service cloud.firestore {
     function validContacts(data) {
       return data.get('studentPhone', '').matches('^[6-9][0-9]{9}$')
         && data.get('parentPhone', '').matches('^[6-9][0-9]{9}$')
-        && data.studentPhone != data.parentPhone;
+        && data.studentPhone != data.parentPhone
+        && (data.get('alternateParentPhone', '') == '' || (data.get('alternateParentPhone', '').matches('^[6-9][0-9]{9}$')
+          && data.alternateParentPhone != data.studentPhone && data.alternateParentPhone != data.parentPhone));
+    }
+    function validWardenCoverage(data) {
+      let coverage = data.get('wardenCoverage', []);
+      return coverage is list && coverage.size() > 0 && coverage.size() <= 10
+        && coverage.toSet().size() == coverage.size()
+        && coverage.hasOnly(['ENGINEERING:1','ENGINEERING:2','ENGINEERING:3','ENGINEERING:4',
+          'ARTS_SCIENCE:1','ARTS_SCIENCE:2','ARTS_SCIENCE:3',
+          'ALLIED_HEALTH:1','ALLIED_HEALTH:2','ALLIED_HEALTH:3']);
+    }
+    function coverageGroup(name) {
+      return isEngineeringName(name) ? 'ENGINEERING'
+        : name.matches('(?i).*arts.*science.*') ? 'ARTS_SCIENCE'
+        : name.matches('(?i).*allied.*health.*') ? 'ALLIED_HEALTH' : '';
     }
     function validProfile(data) {
       let role = data.get('requestedRole', data.role);
       let common = role in ['Class Advisor','HOD'] && isShDepartment(data.get('department', ''));
-      return role in ['Student','Class Advisor','HOD','Principal','Year Warden','Resident Councillor','Security','Admin']
+      return role in ['Student','Class Advisor','HOD','Principal','Deputy Warden','Resident Councillor','Security','Admin']
         && data.displayName is string && data.displayName.size() > 0
         && data.get('registerNumber', '').matches('^[A-Z0-9_-]+$') && data.get('registerNumber', '').size() <= 40
         && (!(role in ['Student','Class Advisor','HOD','Principal']) || data.get('institution', '').size() > 0)
         && (!(role in ['Student','Class Advisor','HOD']) || data.get('department', '').size() > 0)
         && (!(role in ['Student','Class Advisor']) || (common || data.get('year', 0) in [1,2,3,4,5,6,7,8]))
         && (!(role in ['Student','Class Advisor']) || common || data.get('section', '').size() > 0)
-        && (!(role in ['Year Warden','Resident Councillor']) || data.get('hostel', '') in ['Boys hostel','Girls hostel'])
+        && (!(role in ['Deputy Warden','Resident Councillor']) || data.get('hostel', '') in ['Boys hostel','Girls hostel'])
+        && (role != 'Deputy Warden' || validWardenCoverage(data))
         && (!common || (isEngineeringName(data.get('institution', '')) && data.get('year', 0) == 1))
         && (!(role == 'Student' && isShDepartment(data.get('department', ''))) || (isEngineeringName(data.get('institution', '')) && data.get('year', 0) == 1))
         && (role != 'Admin' || data.get('position', '').size() > 0)
@@ -60,13 +76,14 @@ service cloud.firestore {
         && (commonFirstYear() || me().role != 'Class Advisor' || me().get('year', 0) == 0 || me().get('year', null) == null || me().year == resource.data.year)
         && (me().role != 'Class Advisor' || me().get('section', '') == '' || me().section == resource.data.get('section', ''))
         && (!(commonFirstYear() && me().role == 'HOD') || me().get('sections', []).hasAny([resource.data.get('section', '')]))
-        && (!(me().role in ['Year Warden','Resident Councillor']) || (me().hostel == 'Boys hostel' && requestGender() == 'Male') || (me().hostel == 'Girls hostel' && requestGender() == 'Female')));
+        && (!(me().role in ['Deputy Warden','Resident Councillor']) || (me().hostel == 'Boys hostel' && requestGender() == 'Male') || (me().hostel == 'Girls hostel' && requestGender() == 'Female'))
+        && (me().role != 'Deputy Warden' || me().get('wardenCoverage', []).hasAny([coverageGroup(resource.data.get('institution', '')) + ':' + string(resource.data.get('year', 0))])));
     }
     function ownsQueue() {
       return (me().role == 'Class Advisor' && resource.data.status == 'PENDING_ADVISOR')
         || (me().role == 'HOD' && resource.data.status == 'PENDING_HOD')
         || (me().role == 'Principal' && resource.data.status == 'PENDING_PRINCIPAL')
-        || (me().role == 'Year Warden' && resource.data.status == 'PENDING_WARDEN')
+        || (me().role == 'Deputy Warden' && resource.data.status == 'PENDING_WARDEN')
         || (me().role == 'Resident Councillor' && resource.data.status == 'PENDING_COUNCILLOR');
     }
 
@@ -117,7 +134,7 @@ service cloud.firestore {
     function validAdminEdit(userId) {
       let data = request.resource.data;
       return resource.data.get('deletionPending', false) == false && resource.data.get('accountOperation', null) == null
-        && data.diff(resource.data).affectedKeys().hasOnly(['displayName','registerNumber','institution','department','year','section','sections','hostel','position','gender','studentType','studentPhone','parentPhone','phone','role','requestedRole','photoUrl','approvalStatus','active','disabled','deleted','reviewedAt','updatedBy'])
+        && data.diff(resource.data).affectedKeys().hasOnly(['displayName','registerNumber','institution','department','year','section','sections','hostel','wardenCoverage','position','gender','studentType','studentPhone','parentPhone','alternateParentPhone','phone','role','requestedRole','photoUrl','approvalStatus','active','disabled','deleted','reviewedAt','updatedBy'])
         && validProfile(data) && data.role == data.requestedRole
         && data.approvalStatus in ['PENDING','APPROVED','REJECTED','REMOVED']
         && data.disabled is bool && data.active == (data.approvalStatus == 'APPROVED' && data.disabled == false)
@@ -135,7 +152,7 @@ service cloud.firestore {
         && request.resource.data.role == getAfter(/databases/$(database)/documents/users/$(studentId)).data.role
         && request.resource.data.active == getAfter(/databases/$(database)/documents/users/$(studentId)).data.active;
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || isStaff());
-      allow update: if signedIn() && isStaff() && me().role == 'Year Warden';
+      allow update: if signedIn() && isStaff() && me().role == 'Deputy Warden';
       allow delete: if isAdmin() && userPurged(studentId);
     }
 
@@ -221,7 +238,7 @@ service cloud.firestore {
           || (next == 'APPROVED' && resource.data.get('studentType', 'HOSTELLER') == 'DAY_SCHOLAR'
             && request.resource.data.passNumber is string && request.resource.data.passNumber.size() > 0)))
         || (me().role == 'Principal' && old == 'PENDING_PRINCIPAL' && (next == 'PENDING_WARDEN' || next == 'REJECTED'))
-        || (me().role == 'Year Warden' && old == 'PENDING_WARDEN' && (next == 'PENDING_COUNCILLOR' || next == 'REJECTED'))
+        || (me().role == 'Deputy Warden' && old == 'PENDING_WARDEN' && (next == 'PENDING_COUNCILLOR' || next == 'REJECTED'))
         || (me().role == 'Resident Councillor' && old == 'PENDING_COUNCILLOR' && (next == 'APPROVED' || next == 'REJECTED')));
     }
 

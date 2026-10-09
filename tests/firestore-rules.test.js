@@ -7,7 +7,7 @@ const token=uid=>[Buffer.from(JSON.stringify({alg:'none',typ:'JWT'})).toString('
 async function write(path,data,actor='owner'){const response=await fetch(`${root}/${path}`,{method:'PATCH',headers:{Authorization:`Bearer ${actor==='owner'?'owner':token(actor)}`,'Content-Type':'application/json'},body:JSON.stringify({fields:fields(data)})});return {status:response.status,body:await response.text()};}
 async function register(uid,profile){const response=await fetch(root+':commit',{method:'POST',headers:{Authorization:`Bearer ${token(uid)}`,'Content-Type':'application/json'},body:JSON.stringify({writes:[{update:{name:`projects/${project}/databases/(default)/documents/users/${uid}`,fields:fields(profile)}},{update:{name:`projects/${project}/databases/(default)/documents/registerNumbers/${profile.registerNumber}`,fields:fields({uid,createdAt:new Date()})}}]})});return {status:response.status,body:await response.text()};}
 const approved={active:true,approvalStatus:'APPROVED'};
-for(const [uid,profile] of Object.entries({admin:{...approved,role:'Admin',displayName:'Admin'},advisor:{...approved,role:'Class Advisor',displayName:'Dr Advisor',department:'CSE'},inactive:{active:false,role:'HOD',displayName:'Inactive'},warden:{...approved,role:'Year Warden',displayName:'Warden',hostel:'Girls hostel'},principal:{...approved,role:'Principal',displayName:'Principal'},student:{...approved,role:'Student',displayName:'Student',department:'CSE',year:2,gender:'Female',section:'A'}}))assert.equal((await write(`users/${uid}`,profile)).status,200);
+for(const [uid,profile] of Object.entries({admin:{...approved,role:'Admin',displayName:'Admin'},advisor:{...approved,role:'Class Advisor',displayName:'Dr Advisor',department:'CSE'},inactive:{active:false,role:'HOD',displayName:'Inactive'},warden:{...approved,role:'Deputy Warden',displayName:'Warden',hostel:'Girls hostel',wardenCoverage:['ENGINEERING:4','ARTS_SCIENCE:2','ALLIED_HEALTH:3']},principal:{...approved,role:'Principal',displayName:'Principal'},student:{...approved,role:'Student',displayName:'Student',department:'CSE',year:2,gender:'Female',section:'A'}}))assert.equal((await write(`users/${uid}`,profile)).status,200);
 // Sign-in reads a missing session before claiming it. Admin access must support both operations.
 let sessionRead=await fetch(`${root}/portalSessions/admin`,{headers:{Authorization:`Bearer ${token('admin')}`}});assert.equal(sessionRead.status,404);
 const adminSession={sessionId:'admin-sign-in-session-0123456789',expiresAt:new Date(Date.now()+90000)};
@@ -49,6 +49,8 @@ const futurePass={studentId:'newstudent',studentName:'New Student',registerNumbe
 result=await write('outpasses/future',futurePass,'newstudent');assert.equal(result.status,200,result.body);
 result=await write('outpasses/changed-institute',{...futurePass,institution:'Arts'},'newstudent');assert.equal(result.status,403,result.body);
 result=await write('outpasses/matching-phone',{...futurePass,studentPhone:futurePass.parentPhone},'newstudent');assert.equal(result.status,403,result.body);
+result=await write('outpasses/alternate-parent',{...futurePass,alternateParentPhone:'9842012347'},'newstudent');assert.equal(result.status,200,result.body);
+result=await write('outpasses/duplicate-alternate',{...futurePass,alternateParentPhone:futurePass.parentPhone},'newstudent');assert.equal(result.status,403,result.body);
 result=await write('outpasses/reversed-dates',{...futurePass,returnAtTimestamp:new Date(Date.now())},'newstudent');assert.equal(result.status,403,result.body);
 result=await write('outpasses/emergency',{...futurePass,category:'EMERGENCY'},'newstudent');assert.equal(result.status,200,result.body);
 result=await write('outpasses/wrong-category',{...futurePass,category:'BYPASS'},'newstudent');assert.equal(result.status,403,result.body);
@@ -127,16 +129,18 @@ result=await write('outpasses/hosteller-hod',{...hostellerHod,status:'APPROVED',
 const holidayPass={...futurePass,category:'HOLIDAY',studentType:'DAY_SCHOLAR'};
 result=await write('outpasses/holiday',holidayPass,'newstudent');assert.equal(result.status,200,result.body);
 const lateWarden={...futurePass,status:'PENDING_WARDEN',year:4,gender:'Female',hostel:'Girls hostel'};await write('outpasses/warden-year',lateWarden);
-const wardenEntry={role:'Year Warden',approverId:'warden',name:'Warden',decision:'APPROVED',remarks:'',at:'2026-10-05'};
+const wardenEntry={role:'Deputy Warden',approverId:'warden',name:'Warden',decision:'APPROVED',remarks:'',at:'2026-10-05'};
 result=await write('outpasses/warden-year',{...lateWarden,status:'PENDING_COUNCILLOR',approvals:[wardenEntry]},'warden');assert.equal(result.status,200,result.body);
-await write('users/boys-warden',{...approved,role:'Year Warden',displayName:'Boys Warden',hostel:'Boys hostel'});
-const maleWarden={...futurePass,status:'PENDING_WARDEN',gender:'Male'};await write('outpasses/warden-male',maleWarden);
+await write('users/boys-warden',{...approved,role:'Deputy Warden',displayName:'Boys Warden',hostel:'Boys hostel',wardenCoverage:['ENGINEERING:2']});
+const maleWarden={...futurePass,status:'PENDING_WARDEN',gender:'Male',year:2};await write('outpasses/warden-male',maleWarden);
 result=await write('outpasses/warden-male',{...maleWarden,status:'PENDING_COUNCILLOR',approvals:[wardenEntry]},'warden');assert.equal(result.status,403,result.body);
-const boysEntry={role:'Year Warden',approverId:'boys-warden',name:'Boys Warden',decision:'APPROVED',remarks:'',at:'2026-10-05'};
+const boysEntry={role:'Deputy Warden',approverId:'boys-warden',name:'Boys Warden',decision:'APPROVED',remarks:'',at:'2026-10-05'};
 result=await write('outpasses/warden-male',{...maleWarden,status:'PENDING_COUNCILLOR',approvals:[boysEntry]},'boys-warden');assert.equal(result.status,200,result.body);
 const femaleWarden={...futurePass,status:'PENDING_WARDEN',gender:'Female',hostel:'Boys hostel'};await write('outpasses/warden-female',femaleWarden);
 result=await write('outpasses/warden-female',{...femaleWarden,status:'PENDING_COUNCILLOR',approvals:[boysEntry]},'boys-warden');assert.equal(result.status,403,result.body);
-console.log('Workflow changes passed: day-scholar outpass at HOD, holiday category, and warden coverage across years.');
+const otherYear={...lateWarden,year:2};await write('outpasses/warden-other-year',otherYear);result=await write('outpasses/warden-other-year',{...otherYear,status:'PENDING_COUNCILLOR',approvals:[wardenEntry]},'warden');assert.equal(result.status,403,result.body);
+const allied={...lateWarden,institution:'STUDY WORLD COLLEGE OF ALLIED AND HEALTH SCIENCE',year:3};await write('outpasses/warden-allied',allied);result=await write('outpasses/warden-allied',{...allied,status:'PENDING_COUNCILLOR',approvals:[wardenEntry]},'warden');assert.equal(result.status,200,result.body);
+console.log('Deputy Warden approval scope passed.');
 const remove=path=>({delete:docName(path)});
 const stamped=(path,data,stamp)=>({update:{name:docName(path),fields:fields(data)},updateTransforms:stamp.map(fieldPath=>({fieldPath,setToServerValue:'REQUEST_TIME'}))});
 const purge={...approved,role:'Student',requestedRole:'Student',displayName:'Purge Student',department:'CSE',year:2,gender:'Female',section:'A',registerNumber:'PURGE1',institution:'Engineering',studentPhone:'9842012346',parentPhone:'9842012345',studentType:'HOSTELLER',phone:'',hostel:'',position:'',disabled:false,deleted:false};

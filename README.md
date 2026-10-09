@@ -10,7 +10,7 @@ The request form shows category and the numbered permission flow. Emergency requ
 
 The pass uses a cream ticket layout based on the supplied reference, with student photo, institution, contacts, category/type, travel times, permission level, approval stamps and a security-gate record. It shows actual exit/return times only when recorded; missing historical approvals are identified as unavailable. Approved passes retain their gate QR and QR download action. **Print / save PDF** opens a print view containing only the selected pass. Returned passes are also available under My passes. Deploy the new callable functions and updated rules with the frontend.
 
-The October 2026 document changes add role-specific required registration fields and an official mobile number for staff. HODs cover all years and sections in their department; Principals cover their institution; Year Wardens cover a hostel and year; Resident Councillors cover a hostel. Admin accounts require a position. Student and parent Indian mobile numbers must be valid and different, including when entered with country codes.
+The October 2026 document changes add role-specific required registration fields and an official mobile number for staff. HODs cover all years and sections in their department; Principals cover their institution; Deputy Wardens cover a hostel and selected institution groups and years; Resident Councillors cover a hostel. Admin accounts require a position. Student and parent Indian mobile numbers must be valid and different, including when entered with country codes.
 
 The student welcome uses “Your campus. Your journey.” The extra profile strip and active-pass card below that welcome are removed; QR passes are available under **My passes**, with previous requests under **Request history**. Institution and department are read-only when requesting an outpass. Dates display as DD/MM/YYYY in Indian time, and departure-date filters are available for request history and gate lookup. Password fields have show/hide controls. Every displayed registration field is required, including the profile photo.
 
@@ -36,7 +36,7 @@ Account management uses the admin-only `manageUserAccount` callable function. In
 
 Run `npm test` for request filtering and hostel scope checks. Run `npm run test:rules` with Firebase CLI and Java 21 installed for isolated Firestore emulator checks. The test project is `demo-campuspass`, which does not use the live Firebase database. Deploy updated `firestore.rules` before using the new archive and hostel-routing actions against your connected Firebase project.
 
-CampusPass is a Firebase Spark-plan-compatible digital hostel outpass system. A single `outpasses` record progresses through Student → Advisor → HOD → Principal → Year Warden → Resident Councillor → Security exit/return. Firestore Security Rules enforce the permitted role and state transitions; Cloudinary handles direct file uploads.
+CampusPass is a Firebase Spark-plan-compatible digital hostel outpass system. A single `outpasses` record progresses through Student → Advisor → HOD → Principal → Deputy Warden → Resident Councillor → Security exit/return. Firestore Security Rules enforce the permitted role and state transitions; Cloudinary handles direct file uploads.
 
 ## Structure
 
@@ -48,7 +48,7 @@ firestore.rules      Role and workflow rules for direct Firestore operations
 ## Firebase data model
 
 - `users/{uid}`: `role`, `displayName`, `registerNumber`, `department`, `year`, `parentPhone`
-- `students/{id}`: directory profile managed by the Year Warden
+- `students/{id}`: directory profile managed by the Deputy Warden
 - `outpasses/{id}`: student/travel details, controlled `status`, optional `passNumber`
 - `outpasses/{id}/approvals/{id}`: immutable approval decisions
 - `outpasses/{id}/gateLogs/{id}`: independent exit and return events
@@ -65,7 +65,7 @@ firestore.rules      Role and workflow rules for direct Firestore operations
 
 The provided `".read": true, ".write": true` policy must not be deployed. It permits anonymous users to change requests, approvals, gate entries, and student details. [database.rules.json](database.rules.json) locks writes to trusted backend code and limits reads to signed-in users. The primary approval state machine remains in Firestore and Firebase Functions; Realtime Database is initialized for real-time operational channels without weakening that workflow's authorization.
 
-Create Firestore user profiles after creating Auth users. Role strings must exactly match: `Student`, `Class Advisor`, `HOD`, `Principal`, `Year Warden`, `Resident Councillor`, `Security`.
+Create Firestore user profiles after creating Auth users. Role strings must exactly match: `Student`, `Class Advisor`, `HOD`, `Principal`, `Deputy Warden`, `Resident Councillor`, `Security`.
 
 ## User registration
 
@@ -94,3 +94,5 @@ In Cloudinary: **Settings → Upload → Upload presets → Add upload preset**,
 3. Deploy. Vercel runs `npm run build`, publishes `dist`, and [vercel.json](vercel.json) rewrites app routes to `index.html`.
 
 Firebase remains the authentication and database backend; Vercel hosts only the React frontend.
+
+Deputy Warden assignments are stored as `wardenCoverage` keys such as `ENGINEERING:1`, `ARTS_SCIENCE:2`, and `ALLIED_HEALTH:3`. Engineering offers years 1–4; Arts and Science and Allied Health Science offer years 1–3. An administrator should edit existing Year Warden accounts, choose Deputy Warden, and select their coverage before those accounts review more passes. Student profiles can also store an optional, distinct `alternateParentPhone`. Deploy both Firestore rules and Functions with the frontend for these changes.

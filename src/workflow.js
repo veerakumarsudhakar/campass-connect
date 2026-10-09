@@ -10,7 +10,7 @@ export const QUEUE_FOR_ROLE = {
 
 export const STATUS_LABEL = {
   DRAFT: 'Draft', PENDING_ADVISOR: 'Awaiting advisor', PENDING_HOD: 'Awaiting HOD',
-  PENDING_PRINCIPAL: 'Awaiting principal', PENDING_WARDEN: 'Awaiting warden',
+  PENDING_PRINCIPAL: 'Awaiting principal', PENDING_WARDEN: 'Awaiting Deputy Warden',
   PENDING_COUNCILLOR: 'Awaiting councillor', APPROVED: 'Approved for exit',
   CURRENTLY_OUT: 'Currently out', CLEARED: 'Cleared', REJECTED: 'Rejected'
 };

@@ -5,6 +5,18 @@ export const canonicalDepartment = value => {
   return isScienceAndHumanities(text) ? SCIENCE_AND_HUMANITIES : text;
 };
 export const isEngineering = institution => String(institution || '').toUpperCase().includes('ENGINEERING');
+export const WARDEN_COVERAGE = { ENGINEERING: { label: 'Engineering', years: [1,2,3,4] }, ARTS_SCIENCE: { label: 'Arts and Science', years: [1,2,3] }, ALLIED_HEALTH: { label: 'Allied Health Science', years: [1,2,3] } };
+export function institutionGroup(institution) {
+  const name=String(institution||'').toUpperCase();
+  return name.includes('ENGINEERING') ? 'ENGINEERING' : name.includes('ARTS') && name.includes('SCIENCE') ? 'ARTS_SCIENCE' : name.includes('ALLIED') && name.includes('HEALTH') ? 'ALLIED_HEALTH' : '';
+}
+export const coverageKey = (group,year) => `${group}:${year}`;
+export function normalizeWardenCoverage(value) {
+  return [...new Set((Array.isArray(value)?value:[]).filter(item=>typeof item==='string' && Object.entries(WARDEN_COVERAGE).some(([group,data])=>data.years.some(year=>item===coverageKey(group,year)))))];
+}
+export function wardenCoverageLabel(value) {
+  return normalizeWardenCoverage(value).map(item=>{const [group,year]=item.split(':');return `Year ${year} ${WARDEN_COVERAGE[group].label}`;});
+}
 export const isCommonFirstYear = user => ['Class Advisor', 'HOD'].includes(user.role || user.requestedRole) && isScienceAndHumanities(user.department);
 
 function unique(values, key) {
@@ -59,7 +71,7 @@ export function matchesStaffScope(record, user) {
   const institution=!role || ['Class Advisor','HOD','Principal'].includes(role);
   const department=!role || ['Class Advisor','HOD'].includes(role);
   const year=!role || role === 'Class Advisor';
-  const hostelRole=!role||role==='Year Warden'||role==='Resident Councillor';
+  const hostelRole=!role||role==='Deputy Warden'||role==='Resident Councillor';
   const hostelName=record.hostel||(record.gender==='Male'?'Boys hostel':record.gender==='Female'?'Girls hostel':'Hostel assignment required');
   const assigned=normalizeSections(user.sections);
   const genderMatch=role?coverageGender(user)!==''&&requestGender(record)===coverageGender(user):!user.hostel||hostelName===user.hostel;
@@ -68,5 +80,6 @@ export function matchesStaffScope(record, user) {
     && (common || !year || !user.year || Number(record.year)===Number(user.year))
     && (role!=='Class Advisor' || !user.section || String(record.section||'').toUpperCase()===String(user.section).toUpperCase())
     && (!(common && role==='HOD') || assigned.includes(String(record.section||'').trim().toUpperCase()))
-    && (!hostelRole || genderMatch);
+    && (!hostelRole || genderMatch)
+    && (role!=='Deputy Warden' || normalizeWardenCoverage(user.wardenCoverage).includes(coverageKey(institutionGroup(record.institution),Number(record.year))));
 }

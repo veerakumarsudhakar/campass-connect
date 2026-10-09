@@ -2,7 +2,7 @@ import { FileDown, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatDateTime as fmt } from './profile-policy';
 import { prettyStatus } from './workflow';
-import { approvalSteps, categoryOf, OUTPASS_CATEGORIES, studentTypeOf, STUDENT_TYPES } from '../functions/outpass-policy';
+import { approvalSteps, approvalForStep, categoryOf, OUTPASS_CATEGORIES, studentTypeOf, STUDENT_TYPES } from '../functions/outpass-policy';
 import './pass-ticket.css';
 
 function printPass(element) {
@@ -15,7 +15,7 @@ function printPass(element) {
   try { window.print(); } catch { cleanup(); }
 }
 
-const STEP_STATUS = { 'Class Advisor':'PENDING_ADVISOR', HOD:'PENDING_HOD', Principal:'PENDING_PRINCIPAL', 'Year Warden':'PENDING_WARDEN', 'Resident Councillor':'PENDING_COUNCILLOR' };
+const STEP_STATUS = { 'Class Advisor':'PENDING_ADVISOR', HOD:'PENDING_HOD', Principal:'PENDING_PRINCIPAL', 'Deputy Warden':'PENDING_WARDEN', 'Resident Councillor':'PENDING_COUNCILLOR' };
 export function PassCard({ record, showStudentType = true }) {
   const valid = ['APPROVED', 'CURRENTLY_OUT'].includes(record.status);
   const type = studentTypeOf(record), category = categoryOf(record);
@@ -46,7 +46,7 @@ export function PassCard({ record, showStudentType = true }) {
       <div className="ticket-footer">{valid ? <div className="ticket-qr"><QRCodeSVG value={qrValue} size={88} level="M" includeMargin/><div><b>Present at the security gate</b><span>Valid until {fmt(record.returnAt)}</span><button type="button" className="ticket-link" onClick={downloadQr}><QrCode size={14}/> Download QR</button></div></div> : <p className="ticket-gate-note">{record.status === 'CLEARED' ? 'This pass is closed. Gate movement is complete.' : record.status === 'REJECTED' ? 'This request was declined. It cannot be used at the gate.' : 'Gate QR becomes available after all permissions are granted.'}</p>}<button type="button" className="ticket-print" onClick={e => printPass(e.currentTarget.closest('.pass-ticket'))}><FileDown size={16}/> Print / save PDF</button></div>
     </div>
     <aside className="ticket-approvals" aria-label="Permission and gate history"><p className="ticket-kicker">Permission trail</p>{steps.map((role,index) => {
-      const approval = record.approvals?.find(a => a.role === role);
+      const approval = approvalForStep(record.approvals,role);
       const declined = approval?.decision === 'REJECTED', approved = approval?.decision === 'APPROVED';
       const current = !approval && index === queueIndex;
       const historyMissing = !approval && (['APPROVED','CURRENTLY_OUT','CLEARED'].includes(record.status) || index < queueIndex);

@@ -11,7 +11,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { outpassClassificationError, studentTypeOf, STUDENT_TYPES } from './outpass-policy.js';
 setGlobalOptions({region:'europe-west1'});
 initializeApp(); const db=getFirestore(); const adminAuth=getAuth();
-const roles={ADVISOR:'Class Advisor',HOD:'HOD',PRINCIPAL:'Principal',WARDEN:'Year Warden',COUNCILLOR:'Resident Councillor',SECURITY:'Security'};
+const roles={ADVISOR:'Class Advisor',HOD:'HOD',PRINCIPAL:'Principal',WARDEN:'Deputy Warden',COUNCILLOR:'Resident Councillor',SECURITY:'Security'};
 const transitions={PENDING_ADVISOR:{role:roles.ADVISOR,next:'PENDING_HOD'},PENDING_HOD:{role:roles.HOD,next:'PENDING_PRINCIPAL'},PENDING_PRINCIPAL:{role:roles.PRINCIPAL,next:'PENDING_WARDEN'},PENDING_WARDEN:{role:roles.WARDEN,next:'PENDING_COUNCILLOR'},PENDING_COUNCILLOR:{role:roles.COUNCILLOR,next:'APPROVED'}};
 async function actor(auth){if(!auth)throw new HttpsError('unauthenticated','Sign in required.');const s=await db.doc(`users/${auth.uid}`).get();if(!s.exists||s.data().active!==true||s.data().disabled||s.data().deletionPending)throw new HttpsError('permission-denied','Account access is unavailable.');return {id:auth.uid,...s.data()}}
 const manageAccount = accountManager({db,auth:adminAuth,timestamp:()=>FieldValue.serverTimestamp()});
@@ -85,12 +85,12 @@ export const createOutpass=onCall(async req=>{
   if(!clean(x.reason,600)||!Number.isFinite(out.getTime())||!Number.isFinite(back.getTime())||back<=out||out<new Date())throw new HttpsError('invalid-argument','Enter a reason and a future departure before the return time.');
   if(!u.institution||!u.department)throw new HttpsError('failed-precondition','Your institution and department must be verified first.');
   const ref=db.collection('outpasses').doc(),phones=profileForRole(x,ROLES.STUDENT);
-  const record={studentId:u.id,studentName:u.displayName,registerNumber:u.registerNumber,institution:u.institution,department:u.department,year:u.year,gender:u.gender||'',section:u.section||'',photoUrl:u.photoUrl||'',studentPhone:phones.studentPhone,parentPhone:phones.parentPhone,reason:clean(x.reason,600),category,studentType,permissionPolicy:'FULL_APPROVAL',responsibilityAccepted:true,outAt:out.toISOString(),returnAt:back.toISOString(),outAtTimestamp:Timestamp.fromDate(out),returnAtTimestamp:Timestamp.fromDate(back),permissionLetterUrl:clean(x.permissionLetterUrl,2000),permissionLetterName:clean(x.permissionLetterName,200),status:'PENDING_ADVISOR',approvals:[],createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()};
+  const record={studentId:u.id,studentName:u.displayName,registerNumber:u.registerNumber,institution:u.institution,department:u.department,year:u.year,gender:u.gender||'',section:u.section||'',photoUrl:u.photoUrl||'',studentPhone:phones.studentPhone,parentPhone:phones.parentPhone,alternateParentPhone:u.alternateParentPhone||'',reason:clean(x.reason,600),category,studentType,permissionPolicy:'FULL_APPROVAL',responsibilityAccepted:true,outAt:out.toISOString(),returnAt:back.toISOString(),outAtTimestamp:Timestamp.fromDate(out),returnAtTimestamp:Timestamp.fromDate(back),permissionLetterUrl:clean(x.permissionLetterUrl,2000),permissionLetterName:clean(x.permissionLetterName,200),status:'PENDING_ADVISOR',approvals:[],createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()};
   await ref.set(record);await audit(ref,u,'SUBMITTED','DRAFT','PENDING_ADVISOR');return {id:ref.id};
 });
 
 export const importStudentDirectory=onCall(async req=>{
-  const u=await actor(req.auth);if(![roles.ADVISOR,roles.WARDEN].includes(u.role))throw new HttpsError('permission-denied','Only Class Advisors and Year Wardens can upload student details.');
+  const u=await actor(req.auth);if(![roles.ADVISOR,roles.WARDEN].includes(u.role))throw new HttpsError('permission-denied','Only Class Advisors and Deputy Wardens can upload student details.');
   const rows=Array.isArray(req.data?.students)?req.data.students:[];if(!rows.length||rows.length>500)throw new HttpsError('invalid-argument','Upload between 1 and 500 student rows.');
   const batch=db.batch(),seen=new Set();
   for(const row of rows){

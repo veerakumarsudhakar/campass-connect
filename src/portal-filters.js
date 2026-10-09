@@ -11,8 +11,8 @@ export function filterRequests(records, { status = 'all', institution = '', depa
     && (!year || String(r.year) === String(year))
     && (!section || r.section === section)
     && (!hostel || (r.hostel || hostelForGender(r.gender)) === hostel)
-    && (status === 'all' || (status === 'approved' ? (role ? r.approvals?.some(a=>a.role===role&&a.decision==='APPROVED') : approvedStatuses.includes(r.status))
-      : status === 'rejected' ? (role ? r.approvals?.some(a=>a.role===role&&a.decision==='REJECTED') : r.status === 'REJECTED')
+    && (status === 'all' || (status === 'approved' ? (role ? r.approvals?.some(a=>(a.role===role||role==='Deputy Warden'&&a.role==='Year Warden')&&a.decision==='APPROVED') : approvedStatuses.includes(r.status))
+      : status === 'rejected' ? (role ? r.approvals?.some(a=>(a.role===role||role==='Deputy Warden'&&a.role==='Year Warden')&&a.decision==='REJECTED') : r.status === 'REJECTED')
       : status === 'progress' ? r.status?.startsWith('PENDING_') : r.status === status)));
 }
 export function hostelForGender(gender) {
@@ -21,6 +21,6 @@ export function hostelForGender(gender) {
 export { matchesStaffScope as matchesScope } from '../functions/academic-policy.js';
 export function listGrouping(role) {
   if (role === 'HOD' || role === 'Resident Councillor') return 'year';
-  if (role === 'Principal' || role === 'Year Warden') return 'department';
+  if (role === 'Principal' || role === 'Deputy Warden') return 'department';
   return '';
 }

@@ -85,6 +85,8 @@ test('role changes discard irrelevant fields and require official contact detail
     assert.match(profileError({...form,phone:''},role),/mobile/);
   }
   assert.equal(roleFields(ROLES.WARDEN).year,false);
+  assert.match(profileError({...form,wardenCoverage:[]},ROLES.WARDEN),/coverage/);
+  assert.deepEqual(profileForRole({...form,wardenCoverage:['ENGINEERING:1','ALLIED_HEALTH:2']},ROLES.WARDEN).wardenCoverage,['ENGINEERING:1','ALLIED_HEALTH:2']);
   assert.equal(roleFields(ROLES.WARDEN).department,false);
   assert.equal(profileForRole(form,ROLES.ADMIN).position,'Administrator');
 });
@@ -94,11 +96,12 @@ test('scope follows role: HOD all years, Principal one institute, hostel teams i
   assert.equal(matchesScope(pass,{role:ROLES.HOD,institution:'Engineering',department:'CSE',year:4,section:'Z'}),true);
   assert.equal(matchesScope(pass,{role:ROLES.PRINCIPAL,institution:'Arts',department:'CSE',year:2}),false);
   assert.equal(matchesScope(pass,{role:ROLES.PRINCIPAL,institution:'Engineering',department:'EEE',year:4}),true);
-  assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:'Boys hostel',year:2,department:'EEE'}),true);
-  assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:'Boys hostel',year:3}),true);
-  assert.equal(matchesScope({...pass,gender:'Female',hostel:'Boys hostel'},{role:ROLES.WARDEN,hostel:'Boys hostel'}),false);
-  assert.equal(matchesScope({...pass,gender:'Female'},{role:ROLES.WARDEN,hostel:'Girls hostel'}),true);
-  assert.equal(matchesScope(pass,{role:ROLES.WARDEN,hostel:''}),false);
+  const deputy={role:ROLES.WARDEN,hostel:'Boys hostel',wardenCoverage:['ENGINEERING:2','ALLIED_HEALTH:3']};
+  assert.equal(matchesScope(pass,deputy),true);
+  assert.equal(matchesScope({...pass,year:3},deputy),false);
+  assert.equal(matchesScope({...pass,institution:'STUDY WORLD COLLEGE OF ALLIED AND HEALTH SCIENCE',year:3},deputy),true);
+  assert.equal(matchesScope({...pass,institution:'STUDY WORLD COLLEGE OF ARTS AND SCIENCE'},deputy),false);
+  assert.equal(matchesScope({...pass,gender:'Female'},deputy),false);
   assert.equal(matchesScope(pass,{role:ROLES.COUNCILLOR,hostel:'Boys hostel',year:4,department:'EEE'}),true);
   assert.equal(matchesScope({...pass,gender:'Female'},{role:ROLES.COUNCILLOR,hostel:'Boys hostel'}),false);
 });
@@ -129,4 +132,11 @@ test('CSV review handles quoted names, prevents duplicates and validates coverag
   assert.throws(()=>parseStudentCsv(csv.replace('9842012346','9842012345')),/different/);
   assert.throws(()=>parseStudentCsv(csv.replace(',Male,',',Unknown,')),/valid/);
   assert.throws(()=>parseStudentCsv(header+'\nREG1,"unterminated'),/unclosed/);
+});
+
+test('alternate parent contact is optional, distinct and saved',()=>{
+ const student={institution:'Engineering',department:'CSE',year:2,section:'A',gender:'Male',studentPhone:'9842012346',parentPhone:'9842012345',studentType:'HOSTELLER'};
+ assert.equal(profileError(student,ROLES.STUDENT),'');
+ assert.match(profileError({...student,alternateParentPhone:student.parentPhone},ROLES.STUDENT),/alternate/);
+ assert.equal(profileForRole({...student,alternateParentPhone:'+91 9842012347'},ROLES.STUDENT).alternateParentPhone,'9842012347');
 });

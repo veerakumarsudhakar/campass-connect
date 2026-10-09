@@ -1,5 +1,5 @@
-export const ROLES = { STUDENT: 'Student', ADVISOR: 'Class Advisor', HOD: 'HOD', PRINCIPAL: 'Principal', WARDEN: 'Year Warden', COUNCILLOR: 'Resident Councillor', SECURITY: 'Security', ADMIN: 'Admin' };
-import { canonicalDepartment, isCommonFirstYear, isEngineering, isScienceAndHumanities, normalizeSections } from './academic-policy.js';
+export const ROLES = { STUDENT: 'Student', ADVISOR: 'Class Advisor', HOD: 'HOD', PRINCIPAL: 'Principal', WARDEN: 'Deputy Warden', COUNCILLOR: 'Resident Councillor', SECURITY: 'Security', ADMIN: 'Admin' };
+import { canonicalDepartment, isCommonFirstYear, isEngineering, isScienceAndHumanities, normalizeSections, normalizeWardenCoverage } from './academic-policy.js';
 import { STUDENT_TYPES, studentTypeOf } from './outpass-policy.js';
 
 export function roleFields(role) {
@@ -32,11 +32,13 @@ export function profileForRole(form, role) {
     section: fields.section ? String(form.section || '').trim().toUpperCase() : '',
     sections: role === ROLES.HOD && isCommonFirstYear({...form,role}) ? normalizeSections(form.sections) : [],
     hostel: fields.hostel ? form.hostel || '' : '',
+    wardenCoverage: role === ROLES.WARDEN ? normalizeWardenCoverage(form.wardenCoverage) : [],
     position: fields.position ? String(form.position || '').trim() : '',
     gender: role === ROLES.STUDENT ? form.gender || '' : '',
     studentType: role === ROLES.STUDENT ? studentTypeOf(form) : '',
     studentPhone: role === ROLES.STUDENT ? phoneDigits(form.studentPhone) : '',
     parentPhone: role === ROLES.STUDENT ? phoneDigits(form.parentPhone) : '',
+    alternateParentPhone: role === ROLES.STUDENT ? phoneDigits(form.alternateParentPhone) : '',
     phone: role === ROLES.STUDENT ? '' : phoneDigits(form.phone),
   };
 }
@@ -50,7 +52,13 @@ export function profileError(form, role) {
   }
   if (fields.year && !common && (!Number.isInteger(Number(form.year)) || Number(form.year)<1 || Number(form.year)>8)) return 'Choose a year from 1 to 8.';
   if (role === ROLES.STUDENT && isScienceAndHumanities(form.department) && (!isEngineering(form.institution) || Number(form.year) !== 1)) return 'Science and Humanities is the common first-year Engineering department.';
-  if (role === ROLES.STUDENT) return !Object.hasOwn(STUDENT_TYPES, studentTypeOf(form)) ? 'Choose Hosteller or Day scholar.' : !form.gender ? 'Choose gender.' : contactError(form.studentPhone, form.parentPhone);
+  if (role === ROLES.WARDEN && !normalizeWardenCoverage(form.wardenCoverage).length) return 'Choose at least one department and year for Deputy Warden coverage.';
+  if (role === ROLES.STUDENT) {
+    const primary=contactError(form.studentPhone,form.parentPhone);
+    if(primary)return primary;
+    if(form.alternateParentPhone && (!validPhone(form.alternateParentPhone) || samePhone(form.alternateParentPhone,form.studentPhone) || samePhone(form.alternateParentPhone,form.parentPhone)))return 'Enter a different valid 10-digit alternate parent mobile number.';
+    return !Object.hasOwn(STUDENT_TYPES, studentTypeOf(form)) ? 'Choose Hosteller or Day scholar.' : !form.gender ? 'Choose gender.' : '';
+  }
   return validPhone(form.phone) ? '' : 'Enter a valid 10-digit official mobile number.';
 }
 

@@ -29,6 +29,8 @@ test('portal markup presents the document-requested fields and separate admin ov
     assert.doesNotMatch(home,/student-meta|pass-card/);
     const overview=render(app.AdminOverview,{users:[],records:[],openApprovals:()=>{}});
     assert.match(overview,/Open user approvals/);
+    assert.equal((overview.match(/class=\"metric /g)||[]).length,4);
+    assert.doesNotMatch(overview,/Updated from live records/);
     assert.doesNotMatch(overview,/admin-table|Create approved access/);
     assert.match(overview,/Create users/);assert.match(overview,/Departments/);assert.match(overview,/Years &amp; sections/);assert.match(overview,/S&amp;H coverage/);
     const portal=render(app.Portal,{user:{uid:'admin',role:'Admin',displayName:'Ada Admin',active:true,approvalStatus:'APPROVED'},demo:true,logout:()=>{},notify:()=>{}});
@@ -45,6 +47,8 @@ test('portal markup presents the document-requested fields and separate admin ov
     assert.doesNotMatch(ownAccount,/Permanently delete/);
     const usersPage=render(admin.AdminUsers,{users:[{uid:'student',displayName:'Arun',email:'student@example.test',registerNumber:'REG1',role:'Student',approvalStatus:'APPROVED'}],currentUser:{uid:'admin'},demo:true,notify:()=>{},setUsers:()=>{}});
     assert.match(usersPage,/Permanently delete/);
+    const pendingUsers=render(admin.AdminUsers,{users:[{uid:'pending',displayName:'Pending User',role:'Student',approvalStatus:'PENDING'},{uid:'approved',displayName:'Approved User',role:'Student',approvalStatus:'APPROVED'}],initialAccess:'PENDING',currentUser:{uid:'admin'},demo:true,notify:()=>{}});
+    assert.match(pendingUsers,/Pending User/);assert.doesNotMatch(pendingUsers,/Approved User/);
     const sh=render(app.ProfileFields,{form:{...form,institution:'STUDY WORLD COLLEGE OF ENGINEERING',department:'SCIENCE AND HUMANITIES (S&H)'},set:()=>{},role:'Class Advisor'});
     assert.match(sh,/All sections/);assert.match(sh,/Common first-year Engineering/);assert.doesNotMatch(sh,/>Year coverage</);
     const requestTable=render(app.RequestTable,{records:[],role:'HOD',user:{},notify:()=>{}});
@@ -53,6 +57,9 @@ test('portal markup presents the document-requested fields and separate admin ov
     const studentFields=fields('Student');
     assert.match(studentFields,/Student type/);
     assert.match(studentFields,/Day scholar/);
+    assert.match(studentFields,/Alternate parent mobile number/);
+    const deputy=render(app.ProfileFields,{form:{hostel:'Girls hostel',wardenCoverage:['ENGINEERING:1','ALLIED_HEALTH:2']},set:()=>{},role:'Deputy Warden'});
+    assert.match(deputy,/1st year Engineering/);assert.match(deputy,/Allied Health Science/);assert.match(deputy,/2nd year ×/);
     const requestForm=render(app.OutpassForm,{user:{studentType:'DAY_SCHOLAR',studentPhone:'9842012346',parentPhone:'9842012345'},demo:true,notify:()=>{}});
     assert.match(requestForm,/Outing/);assert.match(requestForm,/Emergency/);assert.match(requestForm,/On duty/);assert.match(requestForm,/Holiday/);assert.match(requestForm,/Leave/);
     assert.match(requestForm,/9842012346/);assert.match(requestForm,/Filled from your student profile/);
