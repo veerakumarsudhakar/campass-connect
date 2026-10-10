@@ -45,7 +45,7 @@ export function UserEditor({ person, currentUser, demo, setUsers, notify, close 
     try {
       if (demo) setUsers?.(rows => rows.filter(row => row.uid !== person.uid));
       else await permanentlyDeleteAccount(person);
-      notify('Account, portal access, and user records were permanently deleted.');
+      notify('Portal account and user records were deleted. The sign-in email remains reserved.');
       close();
     } catch (err) { setError(message(err)); setConfirmDelete(false); } finally { setBusy(false); }
   }
@@ -58,7 +58,7 @@ export function UserEditor({ person, currentUser, demo, setUsers, notify, close 
     <ProfileFields form={form} set={set} role={form.role}/>
     <label>Profile photo URL<input type="url" value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https://…"/></label>
     {editing&&<><label>Approval<select value={form.approvalStatus} disabled={self} onChange={e=>set('approvalStatus',e.target.value)}><option value="APPROVED">Approved</option><option value="PENDING">Pending review</option><option value="REJECTED">Rejected</option><option value="REMOVED">Archived</option></select></label><label>Portal access<select value={form.disabled?'disabled':'enabled'} disabled={self} onChange={e=>set('disabled',e.target.value==='disabled')}><option value="enabled">Enabled when approved</option><option value="disabled">Disabled</option></select></label><p className="admin-help">Archiving or disabling blocks portal access and keeps the account and past passes. Reapprove and enable to restore access.</p></>}
-    {error&&<p className="error admin-wide" role="alert">{error}</p>}<div className="admin-form-actions admin-wide"><button className="primary" disabled={busy}>{busy?'Saving…':editing?'Save account changes':'Create approved user'}</button>{editing&&<button type="button" className="secondary" disabled={busy||!person.email} onClick={reset}>Send password reset</button>}{editing&&!self&&(confirmDelete?<div className="delete-account"><p>Permanently delete {person.displayName || 'this account'}? This removes the profile, portal access, register number, and this person&apos;s outpass records. It cannot be undone.</p><button type="button" className="secondary danger" disabled={busy} onClick={remove}>{busy?'Deleting…':'Confirm permanent delete'}</button><button type="button" className="text-btn" disabled={busy} onClick={()=>setConfirmDelete(false)}>Cancel</button></div>:<button type="button" className="secondary danger" disabled={busy} onClick={()=>setConfirmDelete(true)}>Permanently delete</button>)}</div>
+    {error&&<p className="error admin-wide" role="alert">{error}</p>}<div className="admin-form-actions admin-wide"><button className="primary" disabled={busy}>{busy?'Saving…':editing?'Save account changes':'Create approved user'}</button>{editing&&<button type="button" className="secondary" disabled={busy||!person.email} onClick={reset}>Send password reset</button>}{editing&&!self&&(confirmDelete?<div className="delete-account"><p>Permanently delete {person.displayName || 'this account'}? This removes the profile, portal access, register number, and this person&apos;s outpass records. The sign-in email stays reserved. It cannot be undone.</p><button type="button" className="secondary danger" disabled={busy} onClick={remove}>{busy?'Deleting…':'Confirm permanent delete'}</button><button type="button" className="text-btn" disabled={busy} onClick={()=>setConfirmDelete(false)}>Cancel</button></div>:<button type="button" className="secondary danger" disabled={busy} onClick={()=>setConfirmDelete(true)}>Permanently delete</button>)}</div>
   </form></section>;
 }
 
@@ -71,7 +71,7 @@ export function AdminUsers({users,currentUser,demo,setUsers,notify,rolesOnly=fal
       else await permanentlyDeleteAccount(person);
       if (selected?.uid === person.uid) setSelected(null);
       setDeleting(null);
-      notify(`${person.displayName || 'This account'} was permanently deleted.`);
+      notify(`${person.displayName || 'This account'} was removed from the portal. The sign-in email remains reserved.`);
     } catch (err) { notify(message(err)); } finally { setBusy(false); }
   }
   const departments = [...new Set(users.map(user=>user.department).filter(Boolean))].sort();

@@ -14,6 +14,7 @@ const adminSession={sessionId:'admin-sign-in-session-0123456789',expiresAt:new D
 let adminClaim=await write('portalSessions/admin',adminSession,'admin');assert.equal(adminClaim.status,200,adminClaim.body);
 sessionRead=await fetch(`${root}/portalSessions/admin`,{headers:{Authorization:`Bearer ${token('admin')}`}});assert.equal(sessionRead.status,200);
 sessionRead=await fetch(`${root}/portalSessions/admin`,{headers:{Authorization:`Bearer ${token('inactive')}`}});assert.equal(sessionRead.status,403);
+sessionRead=await fetch(`${root}/portalSessions/admin`,{headers:{Authorization:`Bearer ${token('advisor')}`}});assert.equal(sessionRead.status,403);
 const pass={studentId:'student',studentName:'Student',registerNumber:'REG1',department:'CSE',year:2,gender:'Female',section:'A',status:'PENDING_ADVISOR',approvals:[]};
 assert.equal((await write('outpasses/one',pass)).status,200);
 const entry={role:'Class Advisor',approverId:'advisor',name:'Dr Advisor',decision:'APPROVED',remarks:'',at:'2026-10-03'};
@@ -69,6 +70,8 @@ result=await write('outpasses/institute-scope',{...principalPass,status:'PENDING
 
 const session={sessionId:'first-device-session-0123456789',expiresAt:new Date(Date.now()+90000)};
 result=await write('portalSessions/newstudent',session,'newstudent');assert.equal(result.status,200,result.body);
+sessionRead=await fetch(`${root}/portalSessions/newstudent`,{headers:{Authorization:`Bearer ${token('admin')}`}});assert.equal(sessionRead.status,200);
+let missingStudentRead=await fetch(`${root}/students/admin`,{headers:{Authorization:`Bearer ${token('admin')}`}});assert.equal(missingStudentRead.status,404);
 result=await write('portalSessions/newstudent',{...session,sessionId:'second-device-session-0123456789'},'newstudent');assert.equal(result.status,403,result.body);
 result=await write('portalSessions/newstudent',{...session,expiresAt:new Date(Date.now()+90000)},'newstudent');assert.equal(result.status,200,result.body);
 await write('portalSessions/newstudent',{...session,expiresAt:new Date(Date.now()-1000)});
