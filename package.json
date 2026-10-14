@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "deploy:rules": "firebase deploy --only firestore:rules --project campass-connect-d4f45",
     "deploy:backend": "firebase deploy --only functions,firestore:rules --project campass-connect-d4f45",
-    "test": "node --test tests/portal-filters.test.js tests/account-management.test.js tests/portal-updates.test.js tests/portal-render.test.js",
+    "test": "node --test tests/portal-filters.test.js tests/account-management.test.js tests/portal-updates.test.js tests/portal-render.test.js tests/gate-policy.test.js",
     "test:rules": "firebase emulators:exec --config firebase.test.json --only firestore --project demo-campuspass \"node tests/firestore-rules.test.js\""
   },
   "dependencies": {

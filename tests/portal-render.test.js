@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 test('portal markup presents the document-requested fields and separate admin overview', async () => {
   process.env.VITE_FIREBASE_API_KEY='';process.env.VITE_FIREBASE_PROJECT_ID='';
-  const server=await createServer({server:{middlewareMode:true},appType:'custom',plugins:[{name:'portal-test-exports',enforce:'pre',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/App.jsx'))return code+'\nexport { ProfileFields, StudentHome, AdminOverview, RequestTable, OutpassForm, Portal };';}}]});
+  const server=await createServer({server:{middlewareMode:true},appType:'custom',plugins:[{name:'portal-test-exports',enforce:'pre',transform(code,id){if(id.replaceAll('\\','/').endsWith('/src/App.jsx'))return code+'\nexport { ProfileFields, StudentHome, AdminOverview, RequestTable, OutpassForm, Portal, GateConsole, SecurityPassLookup, SecurityPassProfile, Dashboard };';}}]});
   try {
     const app=await server.ssrLoadModule('/src/App.jsx');
     const render=(component,props)=>renderToStaticMarkup(React.createElement(component,props));
@@ -54,6 +54,14 @@ test('portal markup presents the document-requested fields and separate admin ov
     const requestTable=render(app.RequestTable,{records:[],role:'HOD',user:{},notify:()=>{}});
     assert.match(requestTable,/Departure date/);
     assert.doesNotMatch(requestTable,/>Year<|>Section</);
+    const gate=render(app.GateConsole,{records:[{id:'outside',status:'CURRENTLY_OUT',studentName:'Anu',passNumber:'PASS-1',registerNumber:'REG1',outAt:'2026-10-01T08:00:00Z',returnAt:'2026-10-01T10:00:00Z'}],notify:()=>{}});
+    assert.match(gate,/Approved to leave/);assert.match(gate,/Overdue outside/);assert.match(gate,/Returned on time/);assert.match(gate,/Returned late/);
+    assert.match(gate,/Anu/);assert.match(gate,/Expected in:/);
+    const securityRecord={id:'SEC1',studentId:'ST1',studentName:'Anu',passNumber:'PASS-SEC1',registerNumber:'REG1',institution:'Engineering',department:'CSE',year:2,section:'A',gender:'Female',studentPhone:'9842012346',parentPhone:'9842012345',reason:'Family visit',status:'CURRENTLY_OUT',outAt:'2026-10-14T08:00:00Z',returnAt:'2026-10-14T18:00:00Z',exitAt:'2026-10-14T09:00:00Z'};
+    const lookup=render(app.Dashboard,{user:{role:'Security'},records:[securityRecord],page:'requests',demo:true});
+    assert.match(lookup,/Find an individual pass/);assert.match(lookup,/PASS-SEC1/);assert.doesNotMatch(lookup,/Track every departure and return/);
+    const profile=render(app.SecurityPassProfile,{record:securityRecord,demo:true,back:()=>{}});
+    assert.match(profile,/STUDENT &amp; PASS PROFILE/);assert.match(profile,/Travel and gate status/);assert.match(profile,/Gate movement history/);assert.match(profile,/Issued pass and approval trail/);assert.match(profile,/Family visit/);
     const studentFields=fields('Student');
     assert.match(studentFields,/Student type/);
     assert.match(studentFields,/Day scholar/);
@@ -68,12 +76,13 @@ test('portal markup presents the document-requested fields and separate admin ov
     const {PassCard}=await server.ssrLoadModule('/src/PassCard.jsx');
     const pass=render(PassCard,{record:{id:'TEST1',studentName:'Arun Kumar',studentType:'DAY_SCHOLAR',category:'ON_DUTY',status:'PENDING_HOD',approvals:[{role:'Class Advisor',decision:'APPROVED',name:'Dr. Meera'}]}});
     assert.match(pass,/pass-ticket/);assert.match(pass,/Permission trail/);
-    assert.match(pass,/Day scholar/);assert.match(pass,/On duty/);assert.match(pass,/Security gate/);assert.match(pass,/Student in/);
+    assert.match(pass,/Day scholar/);assert.match(pass,/On duty/);assert.match(pass,/Security gate/);assert.match(pass,/No gate movement recorded/);
     assert.match(pass,/Dr. Meera/);assert.doesNotMatch(pass,/Principal|Level 2 of 5|ticket-qr/);
     const studentPass=render(PassCard,{record:{id:'TEST1',studentName:'Arun Kumar',studentType:'HOSTELLER',category:'HOLIDAY',status:'PENDING_ADVISOR'},showStudentType:false});
     assert.match(studentPass,/Holiday/);assert.doesNotMatch(studentPass,/Hosteller|Permission level/);
     const returnedPass=render(PassCard,{record:{id:'TEST2',studentName:'Arun',studentType:'DAY_SCHOLAR',category:'EMERGENCY',status:'CLEARED',entryAt:'2026-10-05T10:00:00Z',responsibilityAccepted:true}});
     assert.match(returnedPass,/Returned to campus/);assert.match(returnedPass,/05\/10\/2026/);
+    assert.match(returnedPass,/Student in/);
     assert.match(returnedPass,/Student accepted responsibility/);
     assert.doesNotMatch(returnedPass,/ticket-qr/);
     const issuedPass=render(PassCard,{record:{id:'TEST3',studentName:'Arun',status:'APPROVED',outAt:'2026-10-05T08:00:00Z',returnAt:'2026-10-05T10:00:00Z'}});

@@ -9,6 +9,7 @@ import { error as logError } from 'firebase-functions/logger';
 import { contactError, profileError, profileForRole, ROLES, roleFields, gateError } from './portal-policy.js';
 import { Timestamp } from 'firebase-admin/firestore';
 import { outpassClassificationError, studentTypeOf, STUDENT_TYPES } from './outpass-policy.js';
+import { returnRemarkError, returnTiming } from './gate-policy.js';
 setGlobalOptions({region:'europe-west1'});
 initializeApp(); const db=getFirestore(); const adminAuth=getAuth();
 const roles={ADVISOR:'Class Advisor',HOD:'HOD',PRINCIPAL:'Principal',WARDEN:'Deputy Warden',COUNCILLOR:'Resident Councillor',SECURITY:'Security'};
@@ -123,17 +124,25 @@ export const processDecision=onCall(async req=>{
 
 export const logGateMovement=onCall(async req=>{
   const u=await actor(req.auth);if(u.role!==roles.SECURITY)throw new HttpsError('permission-denied','Security staff only.');
-  const {outpassId,action,gate}=req.data||{};if(typeof outpassId!=='string'||!outpassId||outpassId.includes('/')||!['EXIT','RETURN'].includes(action)||!clean(gate,80))throw new HttpsError('invalid-argument','Select a valid pass, movement, and gate.');
+  const {outpassId,action,gate,remark}=req.data||{};if(typeof outpassId!=='string'||!outpassId||outpassId.includes('/')||!['EXIT','RETURN'].includes(action)||!clean(gate,80))throw new HttpsError('invalid-argument','Select a valid pass, movement, and gate.');
+  if(remark!==undefined&&typeof remark!=='string')throw new HttpsError('invalid-argument','Enter a valid return remark.');
   const ref=db.doc('outpasses/'+outpassId);
-  await db.runTransaction(async tx=>{
+  const movement=await db.runTransaction(async tx=>{
     const s=await tx.get(ref);if(!s.exists)throw new HttpsError('not-found','Pass not found.');const p=s.data();
     if(p.archived||!((action==='EXIT'&&p.status==='APPROVED')||(action==='RETURN'&&p.status==='CURRENTLY_OUT')))throw new HttpsError('failed-precondition','Invalid gate transition.');
+    const now=new Date(),timing=action==='RETURN'?returnTiming(p,now):null,returnRemark=clean(remark,500);
     if(action==='EXIT'){
       const invalid=gateError(p);if(invalid)throw new HttpsError('failed-precondition',invalid);
     }
+    if(action==='RETURN'){
+      const remarkError=returnRemarkError(p,returnRemark,now);
+      if(remarkError)throw new HttpsError('failed-precondition',remarkError);
+    }
     const next=action==='EXIT'?'CURRENTLY_OUT':'CLEARED',gateName=clean(gate,80);
-    tx.update(ref,{status:next,gate:gateName,[action==='EXIT'?'exitAt':'entryAt']:FieldValue.serverTimestamp(),[action==='EXIT'?'exitBy':'entryBy']:u.displayName||'',updatedAt:FieldValue.serverTimestamp()});
-    tx.set(ref.collection('gateLogs').doc(),{securityId:u.id,securityName:u.displayName,action,gate:gateName,at:FieldValue.serverTimestamp()});
-    tx.set(ref.collection('auditLogs').doc(),{userId:u.id,userName:u.displayName,role:u.role,action,gate:gateName,previousStatus:p.status,newStatus:next,createdAt:FieldValue.serverTimestamp()});
-  });return {ok:true};
+    const recordedAt=Timestamp.fromDate(now),returnDetails=action==='RETURN'?{returnLate:timing.late,lateMinutes:timing.minutesLate,returnRemark}:{};
+    tx.update(ref,{status:next,gate:gateName,[action==='EXIT'?'exitAt':'entryAt']:recordedAt,[action==='EXIT'?'exitBy':'entryBy']:u.displayName||'',...returnDetails,updatedAt:recordedAt});
+    tx.set(ref.collection('gateLogs').doc(),{securityId:u.id,securityName:u.displayName,action,gate:gateName,at:recordedAt,...returnDetails});
+    tx.set(ref.collection('auditLogs').doc(),{userId:u.id,userName:u.displayName,role:u.role,action,gate:gateName,previousStatus:p.status,newStatus:next,createdAt:recordedAt,...returnDetails});
+    return {recordedAt:now.toISOString(),...returnDetails};
+  });return {ok:true,...movement};
 });

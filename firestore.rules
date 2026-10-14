@@ -7,6 +7,7 @@ service cloud.firestore {
     function hasAccess() { return signedIn() && me().active == true && me().get('disabled', false) == false && me().get('deletionPending', false) == false; }
     function isStaff() { return hasAccess() && me().role != 'Student'; }
     function isAdmin() { return isStaff() && me().role == 'Admin'; }
+    function isSecurity() { return hasAccess() && me().role == 'Security'; }
     function needsFirstAdmin() {
       return exists(/databases/$(database)/documents/settings/access)
         && get(/databases/$(database)/documents/settings/access).data.needsAdmin == true;
@@ -214,12 +215,76 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived','archivedBy','updatedAt'])
           && request.resource.data.archived == true && request.resource.data.archivedBy == request.auth.uid));
       allow update: if isAdmin() && adminCorrection();
+      allow update: if isSecurity() && validGateTransition(outpassId);
       allow delete: if isAdmin() && userPurged(resource.data.studentId);
+      match /gateLogs/{movementId} {
+        allow read: if hasAccess() && (get(/databases/$(database)/documents/outpasses/$(outpassId)).data.studentId == request.auth.uid || isStaff());
+        allow create: if isSecurity() && validGateLog(outpassId, movementId);
+        allow update, delete: if false;
+      }
+      match /auditLogs/{movementId} {
+        allow read: if hasAccess() && (get(/databases/$(database)/documents/outpasses/$(outpassId)).data.studentId == request.auth.uid || isStaff());
+        allow create: if isSecurity() && validGateAudit(outpassId, movementId);
+        allow update, delete: if false;
+      }
       match /{document=**} {
         allow read: if hasAccess()
           && (get(/databases/$(database)/documents/outpasses/$(outpassId)).data.studentId == request.auth.uid || isStaff());
         allow write: if false;
       }
+    }
+
+    function validGateTransition(outpassId) {
+      let old = resource.data.status;
+      let data = request.resource.data;
+      let changed = data.diff(resource.data).affectedKeys();
+      let exit = old == 'APPROVED' && data.status == 'CURRENTLY_OUT';
+      let arrival = old == 'CURRENTLY_OUT' && data.status == 'CLEARED';
+      let logPath = /databases/$(database)/documents/outpasses/$(outpassId)/gateLogs/$(data.gateMovementId);
+      let auditPath = /databases/$(database)/documents/outpasses/$(outpassId)/auditLogs/$(data.gateMovementId);
+      return resource.data.get('archived', false) == false
+        && data.get('gateMovementId', '') is string && data.gateMovementId.size() >= 20
+        && data.get('gate', '') is string && data.gate.size() > 0 && data.gate.size() <= 80
+        && data.updatedAt == request.time
+        && resource.data.get('returnAtTimestamp', null) is timestamp
+        && resource.data.get('outAtTimestamp', null) is timestamp
+        && (exit || arrival)
+        && (exit
+          ? changed.hasOnly(['status','gate','gateMovementId','exitAt','exitBy','updatedAt'])
+            && request.time >= resource.data.outAtTimestamp && request.time <= resource.data.returnAtTimestamp
+            && data.exitAt == request.time && data.exitBy == me().displayName
+          : changed.hasOnly(['status','gate','gateMovementId','entryAt','entryBy','returnRemark','updatedAt'])
+            && data.entryAt == request.time && data.entryBy == me().displayName
+            && data.get('returnRemark', '') is string && data.returnRemark.size() <= 500
+            && (request.time <= resource.data.returnAtTimestamp || data.returnRemark.size() > 0))
+        && existsAfter(logPath) && existsAfter(auditPath)
+        && getAfter(logPath).data.action == (exit ? 'EXIT' : 'RETURN')
+        && getAfter(logPath).data.at == request.time
+        && getAfter(auditPath).data.action == (exit ? 'EXIT' : 'RETURN');
+    }
+
+    function validGateLog(outpassId, movementId) {
+      let pass = getAfter(/databases/$(database)/documents/outpasses/$(outpassId)).data;
+      let data = request.resource.data;
+      return data.keys().hasOnly(['securityId','securityName','action','gate','at','returnRemark'])
+        && data.securityId == request.auth.uid && data.securityName == me().displayName
+        && data.action in ['EXIT','RETURN'] && data.gate == pass.gate
+        && data.at == request.time && pass.gateMovementId == movementId
+        && pass.status == (data.action == 'EXIT' ? 'CURRENTLY_OUT' : 'CLEARED')
+        && data.get('returnRemark', '') == pass.get('returnRemark', '');
+    }
+
+    function validGateAudit(outpassId, movementId) {
+      let pass = getAfter(/databases/$(database)/documents/outpasses/$(outpassId)).data;
+      let data = request.resource.data;
+      return data.keys().hasOnly(['userId','userName','role','action','gate','previousStatus','newStatus','createdAt','returnRemark'])
+        && data.userId == request.auth.uid && data.userName == me().displayName && data.role == 'Security'
+        && data.action in ['EXIT','RETURN'] && data.gate == pass.gate
+        && data.createdAt == request.time && pass.gateMovementId == movementId
+        && data.previousStatus == (data.action == 'EXIT' ? 'APPROVED' : 'CURRENTLY_OUT')
+        && data.newStatus == (data.action == 'EXIT' ? 'CURRENTLY_OUT' : 'CLEARED')
+        && pass.status == data.newStatus
+        && data.get('returnRemark', '') == pass.get('returnRemark', '');
     }
 
     function validOutpassTransition() {

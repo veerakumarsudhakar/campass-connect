@@ -22,6 +22,7 @@ export function PassCard({ record, showStudentType = true }) {
   const steps = approvalSteps(record);
   const queueIndex = steps.map(role => STEP_STATUS[role]).indexOf(record.status);
   const outside = record.status === 'CURRENTLY_OUT';
+  const gateOut = outside || !!record.exitAt;
   const qrValue = `CAMPUSPASS|${record.id}|${record.passNumber || ''}|${record.registerNumber || ''}|${record.studentName || ''}|${record.department || ''}`;
   const returned = record.entryAt;
   function downloadQr(event) {
@@ -51,6 +52,6 @@ export function PassCard({ record, showStudentType = true }) {
       const current = !approval && index === queueIndex;
       const historyMissing = !approval && (['APPROVED','CURRENTLY_OUT','CLEARED'].includes(record.status) || index < queueIndex);
       return <div className="ticket-approval" key={role}><div><b>{role}</b><span>{approval?.name || (current ? 'Awaiting review' : historyMissing ? 'History unavailable' : record.status === 'REJECTED' ? 'Not reached' : 'Pending')}</span>{approval?.at && <small>{fmt(approval.at)}</small>}{approval?.remarks && <p>{approval.remarks}</p>}</div><span className={`ticket-stamp ${declined ? 'declined' : approved ? 'approved' : current ? 'current' : ''}`} aria-label={declined ? 'Declined' : approved ? 'Approved' : current ? 'Awaiting review' : historyMissing ? 'History unavailable' : 'Pending'}>{declined ? 'NO' : approved ? 'OK' : current ? 'NEXT' : '—'}</span></div>;
-    })}<div className="ticket-approval ticket-security"><div><b>Security gate</b><span>{outside ? 'Student out' : 'Student in'}{record.gate ? ' · '+record.gate : ''}</span>{(returned || record.exitAt) && <small>{fmt(returned || record.exitAt)}</small>}</div><span className={`ticket-stamp ${outside ? 'current' : 'approved'}`}>{outside ? 'OUT' : 'IN'}</span></div></aside>
+    })}<div className="ticket-approval ticket-security"><div><b>Security gate</b><span>{returned ? 'Student in' : gateOut ? 'Student out' : 'No gate movement recorded'}{record.gate ? ' · '+record.gate : ''}</span>{(returned || record.exitAt) && <small>{fmt(returned || record.exitAt)}</small>}</div><span className={`ticket-stamp ${gateOut&&!returned ? 'current' : returned ? 'approved' : ''}`}>{returned ? 'IN' : gateOut ? 'OUT' : '—'}</span></div></aside>
   </article>;
 }

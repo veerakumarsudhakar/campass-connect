@@ -85,6 +85,30 @@ console.log('Document update checks passed: registration uniqueness, contacts, l
 async function commit(actor,writes){const response=await fetch(root+':commit',{method:'POST',headers:{Authorization:`Bearer ${token(actor)}`,'Content-Type':'application/json'},body:JSON.stringify({writes})});return {status:response.status,body:await response.text()};}
 const docName=path=>`projects/${project}/databases/(default)/documents/${path}`;
 const update=(path,data)=>({update:{name:docName(path),fields:fields(data)}});
+const gateBatch=(path,pass,action,movementId,remark='')=>{
+  const arrival=action==='RETURN',next=arrival?'CLEARED':'CURRENTLY_OUT';
+  const passData={...pass,status:next,gate:'GATE-2',gateMovementId:movementId,[arrival?'entryBy':'exitBy']:'Gate officer',...(arrival?{returnRemark:remark}:{})};
+  const logPath=`${path}/gateLogs/${movementId}`,auditPath=`${path}/auditLogs/${movementId}`;
+  const stamp=fieldPath=>({fieldPath,setToServerValue:'REQUEST_TIME'});
+  return [
+    {update:{name:docName(path),fields:fields(passData)},updateTransforms:[stamp(arrival?'entryAt':'exitAt'),stamp('updatedAt')]},
+    {update:{name:docName(logPath),fields:fields({securityId:'security',securityName:'Gate officer',action,gate:'GATE-2',...(arrival?{returnRemark:remark}:{})})},updateTransforms:[stamp('at')]},
+    {update:{name:docName(auditPath),fields:fields({userId:'security',userName:'Gate officer',role:'Security',action,gate:'GATE-2',previousStatus:pass.status,newStatus:next,...(arrival?{returnRemark:remark}:{})})},updateTransforms:[stamp('createdAt')]},
+  ];
+};
+const gateOut=new Date(Date.now()-3600000),gateBack=new Date(Date.now()+3600000);
+const gatePass={...futurePass,status:'APPROVED',outAt:gateOut.toISOString(),returnAt:gateBack.toISOString(),outAtTimestamp:gateOut,returnAtTimestamp:gateBack};
+await write('outpasses/security-exit',gatePass);
+const mismatchedLogs=gateBatch('outpasses/security-exit',gatePass,'EXIT','security-movement-exit-000');
+mismatchedLogs[2].update.name=docName('outpasses/security-exit/auditLogs/different-audit-id-000');
+result=await commit('security',mismatchedLogs);assert.equal(result.status,403,result.body);
+result=await commit('security',gateBatch('outpasses/security-exit',gatePass,'EXIT','security-movement-exit-001'));assert.equal(result.status,200,result.body);
+const overdueOut=new Date(Date.now()-7200000),overdueBack=new Date(Date.now()-3600000);
+const overduePass={...futurePass,status:'CURRENTLY_OUT',outAt:overdueOut.toISOString(),returnAt:overdueBack.toISOString(),outAtTimestamp:overdueOut,returnAtTimestamp:overdueBack};
+await write('outpasses/security-return',overduePass);
+result=await commit('security',gateBatch('outpasses/security-return',overduePass,'RETURN','security-movement-return-001'));assert.equal(result.status,403,result.body);
+result=await commit('security',gateBatch('outpasses/security-return',overduePass,'RETURN','security-movement-return-002','Bus delayed'));assert.equal(result.status,200,result.body);
+console.log('Security gate batch checks passed: atomic exit, late remark requirement, and return logs.');
 const engineering='STUDY WORLD COLLEGE OF ENGINEERING';
 const staffBase={institution:'',department:'',year:null,section:'',hostel:'',position:'',gender:'',studentType:'',studentPhone:'',parentPhone:'',phone:'9842011111',photoUrl:'',disabled:false,deleted:false,active:true,approvalStatus:'APPROVED'};
 await write('users/full-admin',{...staffBase,role:'Admin',requestedRole:'Admin',displayName:'Full Admin',registerNumber:'ADMIN1',position:'Registrar',email:'full-admin@example.test'});

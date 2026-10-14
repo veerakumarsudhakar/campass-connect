@@ -69,6 +69,7 @@ export function gateError(record, now = new Date()) {
   const out = parse(record.outAtTimestamp || record.outAt), back = parse(record.returnAtTimestamp || record.returnAt);
   if (!Number.isFinite(out.getTime()) || !Number.isFinite(back.getTime()) || back <= out) return 'This pass has invalid travel dates.';
   if (now < out) return 'Exit is locked until the approved out time.';
+  if (now > back) return 'The approved exit window has expired.';
   return '';
 }
 

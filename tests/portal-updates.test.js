@@ -111,6 +111,7 @@ test('gate rejects early, expired and invalid exits; overdue students can return
   assert.match(gateError(pass,new Date('2026-10-05T08:59:59Z')),/locked/);
   assert.equal(gateError(pass,new Date(pass.outAt)), '');
   assert.equal(gateError(pass,new Date(pass.returnAt)), '');
+  assert.match(gateError(pass,new Date('2026-10-05T11:00:01Z')),/expired/);
   assert.match(gateError({...pass,returnAt:'bad'},new Date()),/invalid/);
   assert.match(gateError({...pass,archived:true}),/eligible/);
   assert.equal(gateError({...pass,status:'CURRENTLY_OUT'},new Date('2026-10-10')), '');
