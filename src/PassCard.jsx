@@ -37,10 +37,10 @@ export function PassCard({ record, showStudentType = true }) {
       <dl className="ticket-details">{[
         ['Register number', record.registerNumber], ['Institute', record.institution],
         ['Department / Section', `${record.department || '—'}${record.section ? ' · '+record.section : ''}`], ['Year / Gender', `Year ${record.year || '—'} · ${record.gender || '—'}`],
-        ['Out · approved time', fmt(record.outAt)], ['In · expected', fmt(record.returnAt)],
+        ['Out · approved time', fmt(record.outAt), 'when'], ['In · expected', fmt(record.returnAt), 'when'],
         ['Student mobile', record.studentPhone], ['Parent mobile', record.parentPhone],
-        ['Exited · actual', record.exitAt ? fmt(record.exitAt) : 'Not recorded'], ['Returned · actual', returned ? fmt(returned) : 'Not recorded'],
-      ].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value || '—'}</dd></div>)}</dl>
+        ['Exited · actual', record.exitAt ? fmt(record.exitAt) : 'Not recorded', 'when'], ['Returned · actual', returned ? fmt(returned) : 'Not recorded', 'when'],
+      ].map(([label,value,kind]) => <div key={label} className={kind ? `ticket-${kind}` : undefined}><dt>{label}</dt><dd>{value || '—'}</dd></div>)}</dl>
       <div className="ticket-reason"><small>Reason for request</small><blockquote>{record.reason || '—'}</blockquote><p className={record.responsibilityAccepted ? 'ticket-declaration' : 'ticket-unrecorded'}>{record.responsibilityAccepted ? '✓ Student accepted responsibility for their time outside campus.' : 'Responsibility declaration not recorded on this pass.'}</p></div>
       {returned && <p className="ticket-return">Returned to {type === 'DAY_SCHOLAR' ? 'campus' : 'hostel'} · {fmt(returned)}{record.gate ? ' · '+record.gate : ''}</p>}
       <div className="ticket-footer">{valid ? <div className="ticket-qr"><QRCodeSVG value={qrValue} size={88} level="M" includeMargin/><div><b>Present at the security gate</b><span>Valid until {fmt(record.returnAt)}</span><button type="button" className="ticket-link" onClick={downloadQr}><QrCode size={14}/> Download QR</button></div></div> : <p className="ticket-gate-note">{record.status === 'CLEARED' ? 'This pass is closed. Gate movement is complete.' : record.status === 'REJECTED' ? 'This request was declined. It cannot be used at the gate.' : 'Gate QR becomes available after all permissions are granted.'}</p>}<button type="button" className="ticket-print" onClick={e => printPass(e.currentTarget.closest('.pass-ticket'))}><FileDown size={16}/> Print / save PDF</button></div>
